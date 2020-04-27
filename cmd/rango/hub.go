@@ -1,7 +1,6 @@
 package main
 
 import (
-	"errors"
 	"fmt"
 	"log"
 
@@ -68,8 +67,8 @@ func (h *Hub) unsubscribeAll(client *Client) {
 	}
 }
 
-func responseMust(id uint32, e error, r interface{}) []byte {
-	res, err := msg.Response(id, e, r)
+func responseMust(e error, r interface{}) []byte {
+	res, err := msg.Response(e, r)
 	if err != nil {
 		log.Panic(err)
 	}
@@ -84,51 +83,52 @@ func (h *Hub) handleRequest(req Request) {
 	case "unsubscribe":
 		h.hanldeUnsubscribe(req)
 	default:
-		req.client.send <- responseMust(req.ID, errors.New("unsupported method"), nil)
+		// req.client.send <- responseMust(1, errors.New("unsupported method"), nil)
 	}
 }
 
-func getStringArgs(params []interface{}) ([]string, error) {
+func getStringArgs(params []string) ([]string, error) {
 	topics := make([]string, len(params))
 
 	for i, t := range params {
-		topic, ok := t.(string)
-		if !ok {
-			return topics, errors.New("Invalid list")
-		}
-		topics[i] = topic
+		topics[i] = t
 	}
 
 	return topics, nil
 }
 
 func (h *Hub) hanldeSubscribe(req Request) {
-	topics, err := getStringArgs(req.Params)
+	topics, err := getStringArgs(req.Streams)
 	if err != nil {
-		req.client.send <- responseMust(req.ID, err, nil)
+		req.client.send <- responseMust(err, nil)
 	}
 
 	for _, t := range topics {
 		topic, ok := h.topics[t]
 		if !ok {
-			req.client.send <- responseMust(req.ID, fmt.Errorf("Topic does not exsit %s", t), nil)
-			return
+			topic = NewTopic(h)
 		}
 
+		message := make(map[string]string)
+		message["message"] = "subscribed"
+		message["streams"] = t
+
+		req.client.send <- responseMust(nil, message)
 		topic.subscribe(req.client)
 	}
 }
 
 func (h *Hub) hanldeUnsubscribe(req Request) {
-	topics, err := getStringArgs(req.Params)
+	topics, err := getStringArgs(req.Streams)
 	if err != nil {
-		req.client.send <- responseMust(req.ID, err, nil)
+		req.client.send <- responseMust(err, nil)
 	}
 
+	fmt.Println(topics)
 	for _, t := range topics {
 		topic, ok := h.topics[t]
 		if !ok {
-			req.client.send <- responseMust(req.ID, fmt.Errorf("Topic does not exsit %s", t), nil)
+			req.client.send <- responseMust(fmt.Errorf("Topic does not exist %s", t), nil)
 			return
 		}
 

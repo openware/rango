@@ -70,7 +70,7 @@ func (c *Client) readPump() {
 
 		req, err := msg.ParseRequest(message)
 		if err != nil {
-			c.send <- responseMust(req.ID, err, nil)
+			c.send <- responseMust(err, nil)
 			continue
 		}
 

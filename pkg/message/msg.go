@@ -2,24 +2,33 @@ package message
 
 import (
 	"encoding/json"
+	"fmt"
 )
 
 type Request struct {
-	Type   string
-	ID     uint32
-	Method string
-	Params []interface{}
+	Method  string
+	Streams []string
 }
 
-func Response(id uint32, err error, result interface{}) ([]byte, error) {
+type NewResponse struct {
+	Resp map[string]interface{}
+}
+
+func Response(err error, message interface{}) ([]byte, error) {
 	// TODO: Response method
-	res := make([]interface{}, 4)
+	res := make(map[string]interface{}, 3)
+	if err != nil {
+		fmt.Println(err)
+		res["unsuccess"] = err.Error()
+	} else {
+		res["success"] = message
+	}
 	return json.Marshal(res)
 }
 
-func Event(method string, data interface{}) ([]byte, error) {
+func Event(channel string, data interface{}) ([]byte, error) {
 	// TODO: Event method
-	res := make([]interface{}, 3)
-
-	return json.Marshal(res)
+	resp := make(map[string]interface{})
+	resp[channel] = data
+	return json.Marshal(resp)
 }
