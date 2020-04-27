@@ -1,11 +1,11 @@
-package main
+package routing
 
 import (
 	"container/ring"
-	"log"
 
 	msg "github.com/openware/rango/pkg/message"
 	"github.com/openware/rango/pkg/upstream"
+	"github.com/rs/zerolog/log"
 )
 
 const TopicBufferSize = 10
@@ -28,7 +28,7 @@ func NewTopic(h *Hub) *Topic {
 func eventMust(method string, data interface{}) []byte {
 	ev, err := msg.Event(method, data)
 	if err != nil {
-		log.Panic(err)
+		log.Panic().Msg(err.Error())
 	}
 
 	return ev
@@ -46,7 +46,7 @@ func (t *Topic) broadcast(message upstream.Msg) {
 		select {
 		case client.send <- eventMust(message.Channel, message.Message):
 		default:
-			t.hub.unregister <- client
+			t.hub.Unregister <- client
 		}
 	}
 }

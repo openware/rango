@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/rs/zerolog/log"
 	"github.com/streadway/amqp"
 )
 
@@ -27,6 +28,7 @@ func AMQPUpstream(output chan Msg) {
 	if err != nil {
 		panic("could not establish connection with RabbitMQ:" + err.Error())
 	}
+	log.Info().Msg("Connected to AMQP on " + url)
 	channel, err := connection.Channel()
 
 	if err != nil {

@@ -3,11 +3,13 @@ package main
 import (
 	"crypto/rsa"
 	"flag"
-	"log"
 	"net/http"
 	"strings"
 
+	"github.com/rs/zerolog/log"
+
 	"github.com/openware/rango/pkg/auth"
+	"github.com/openware/rango/pkg/routing"
 	"github.com/openware/rango/pkg/upstream"
 )
 
@@ -29,40 +31,50 @@ func token(r *http.Request) string {
 	return authHeader[len(prefix):]
 }
 
-func authHandler(h httpHanlder, key *rsa.PublicKey) httpHanlder {
+func authHandler(h httpHanlder, key *rsa.PublicKey, mustAuth bool) httpHanlder {
 	return func(w http.ResponseWriter, r *http.Request) {
-		_, err := auth.ParseAndValidate(token(r), key)
-		if err == nil {
-			h(w, r)
+		auth, err := auth.ParseAndValidate(token(r), key)
+
+		if err != nil && mustAuth {
+			w.WriteHeader(http.StatusUnauthorized)
 			return
 		}
 
-		w.WriteHeader(http.StatusUnauthorized)
+		if err == nil {
+			r.Header.Set("JwtUID", auth.UID)
+		} else {
+			r.Header.Del("JwtUID")
+		}
+		h(w, r)
+		return
 	}
 }
 
 func main() {
 	flag.Parse()
-	hub := newHub()
+	hub := routing.NewHub()
 
 	ks := auth.KeyStore{}
 	ks.GenerateKeys()
 	if err := ks.LoadPublicKey(*pubKey); err != nil {
-		log.Panic(err)
+		log.Fatal().Msg("LoadPublicKey failed: " + err.Error())
+		return
 	}
 
-	go hub.run()
-	go upstream.AMQPUpstream(hub.messages)
+	go hub.Run()
+	go upstream.AMQPUpstream(hub.Messages)
 
 	wsHandler := func(w http.ResponseWriter, r *http.Request) {
-		serveWs(hub, w, r)
+		routing.NewClient(hub, w, r)
 	}
 
-	http.HandleFunc("/public", wsHandler)
-	http.HandleFunc("/private", authHandler(wsHandler, ks.PublicKey))
+	http.HandleFunc("/private", authHandler(wsHandler, ks.PublicKey, true))
+	http.HandleFunc("/public", authHandler(wsHandler, ks.PublicKey, false))
+	http.HandleFunc("/", authHandler(wsHandler, ks.PublicKey, false))
 
+	log.Printf("Listenning on %s", *addr)
 	err := http.ListenAndServe(*addr, nil)
 	if err != nil {
-		log.Fatal("ListenAndServe: ", err)
+		log.Fatal().Msg("ListenAndServe failed: " + err.Error())
 	}
 }

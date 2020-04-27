@@ -1,11 +1,11 @@
-package main
+package routing
 
 import (
 	"fmt"
-	"log"
 
 	msg "github.com/openware/rango/pkg/message"
 	"github.com/openware/rango/pkg/upstream"
+	"github.com/rs/zerolog/log"
 )
 
 type Request struct {
@@ -17,43 +17,43 @@ type Request struct {
 // clients.
 type Hub struct {
 	// Registered clients.
-	// Inbound messages from the clients.
-	messages chan upstream.Msg
+	// Inbound Messages from the clients.
+	Messages chan upstream.Msg
 
-	// Register requests from the clients.
-	requests chan Request
+	// Register Requests from the clients.
+	Requests chan Request
 
 	// Unregister requests from clients.
-	unregister chan *Client
+	Unregister chan *Client
 
-	// List of clients registered to topics
-	topics map[string]*Topic
+	// List of clients registered to Topics
+	Topics map[string]*Topic
 }
 
-func newHub() *Hub {
+func NewHub() *Hub {
 	return &Hub{
-		requests:   make(chan Request),
-		unregister: make(chan *Client),
-		topics:     make(map[string]*Topic),
-		messages:   make(chan upstream.Msg),
+		Requests:   make(chan Request),
+		Unregister: make(chan *Client),
+		Topics:     make(map[string]*Topic),
+		Messages:   make(chan upstream.Msg),
 	}
 }
 
-func (h *Hub) run() {
+func (h *Hub) Run() {
 	for {
 		select {
-		case req := <-h.requests:
+		case req := <-h.Requests:
 			h.handleRequest(req)
 
-		case client := <-h.unregister:
+		case client := <-h.Unregister:
 			h.unsubscribeAll(client)
 			close(client.send)
 
-		case message := <-h.messages:
-			topic, ok := h.topics[message.Channel]
+		case message := <-h.Messages:
+			topic, ok := h.Topics[message.Channel]
 			if !ok {
 				topic = NewTopic(h)
-				h.topics[message.Channel] = topic
+				h.Topics[message.Channel] = topic
 			}
 
 			topic.broadcast(message)
@@ -62,7 +62,7 @@ func (h *Hub) run() {
 }
 
 func (h *Hub) unsubscribeAll(client *Client) {
-	for _, topic := range h.topics {
+	for _, topic := range h.Topics {
 		topic.unsubscribe(client)
 	}
 }
@@ -70,7 +70,8 @@ func (h *Hub) unsubscribeAll(client *Client) {
 func responseMust(e error, r interface{}) []byte {
 	res, err := msg.Response(e, r)
 	if err != nil {
-		log.Panic(err)
+		log.Panic().Msg("responseMust failed:" + err.Error())
+		panic(err.Error())
 	}
 
 	return res
@@ -104,7 +105,7 @@ func (h *Hub) hanldeSubscribe(req Request) {
 	}
 
 	for _, t := range topics {
-		topic, ok := h.topics[t]
+		topic, ok := h.Topics[t]
 		if !ok {
 			topic = NewTopic(h)
 		}
@@ -126,7 +127,7 @@ func (h *Hub) hanldeUnsubscribe(req Request) {
 
 	fmt.Println(topics)
 	for _, t := range topics {
-		topic, ok := h.topics[t]
+		topic, ok := h.Topics[t]
 		if !ok {
 			req.client.send <- responseMust(fmt.Errorf("Topic does not exist %s", t), nil)
 			return

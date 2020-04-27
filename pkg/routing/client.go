@@ -1,13 +1,13 @@
-package main
+package routing
 
 import (
 	"bytes"
-	"log"
 	"net/http"
 	"time"
 
 	"github.com/gorilla/websocket"
 	msg "github.com/openware/rango/pkg/message"
+	"github.com/rs/zerolog/log"
 )
 
 const (
@@ -38,11 +38,40 @@ var upgrader = websocket.Upgrader{
 type Client struct {
 	hub *Hub
 
+	// User ID if authorized
+	UID string
+
 	// The websocket connection.
 	conn *websocket.Conn
 
 	// Buffered channel of outbound messages.
 	send chan []byte
+}
+
+// NewClient handles websocket requests from the peer.
+func NewClient(hub *Hub, w http.ResponseWriter, r *http.Request) {
+	conn, err := upgrader.Upgrade(w, r, nil)
+	if err != nil {
+		log.Error().Msg("Websocket upgrade failed: " + err.Error())
+		return
+	}
+	client := &Client{
+		hub:  hub,
+		conn: conn,
+		send: make(chan []byte, 256),
+		UID:  r.Header.Get("JwtUID"),
+	}
+
+	if client.UID == "" {
+		log.Info().Msgf("New anonymous connection")
+	} else {
+		log.Info().Msgf("New authenticated connection: %s", client.UID)
+	}
+
+	// Allow collection of memory referenced by the caller by doing all work in
+	// new goroutines.
+	go client.writePump()
+	go client.readPump()
 }
 
 // readPump pumps messages from the websocket connection to the hub.
@@ -52,7 +81,7 @@ type Client struct {
 // reads from this goroutine.
 func (c *Client) readPump() {
 	defer func() {
-		c.hub.unregister <- c
+		c.hub.Unregister <- c
 		c.conn.Close()
 	}()
 	c.conn.SetReadLimit(maxMessageSize)
@@ -74,7 +103,7 @@ func (c *Client) readPump() {
 			continue
 		}
 
-		c.hub.requests <- Request{c, req}
+		c.hub.Requests <- Request{c, req}
 	}
 }
 
@@ -122,19 +151,4 @@ func (c *Client) writePump() {
 			}
 		}
 	}
-}
-
-// serveWs handles websocket requests from the peer.
-func serveWs(hub *Hub, w http.ResponseWriter, r *http.Request) {
-	conn, err := upgrader.Upgrade(w, r, nil)
-	if err != nil {
-		log.Println(err)
-		return
-	}
-	client := &Client{hub: hub, conn: conn, send: make(chan []byte, 256)}
-
-	// Allow collection of memory referenced by the caller by doing all work in
-	// new goroutines.
-	go client.writePump()
-	go client.readPump()
 }
