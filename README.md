@@ -30,3 +30,8 @@ wscat --connect localhost:8080/private --header "Authorization: Bearer $(go run 
 ```
 {"event":"subscribe","streams":["eurusd.trades","eurusd.ob-inc"]}
 ```
+
+### Unsubscribe to one or several streams
+```
+{"event":"unsubscribe","streams":["eurusd.trades"]}
+```

@@ -3,8 +3,12 @@ package main
 import (
 	"crypto/rsa"
 	"flag"
+	"fmt"
 	"net/http"
 	"strings"
+	"time"
+
+	"math/rand"
 
 	"github.com/rs/zerolog/log"
 
@@ -14,8 +18,10 @@ import (
 )
 
 var (
-	addr   = flag.String("addr", ":8080", "http service address")
-	pubKey = flag.String("pubKey", "config/rsa-key.pub", "path to public key")
+	wsAddr   = flag.String("ws-addr", ":8080", "http service address")
+	amqpAddr = flag.String("amqp-addr", "amqp://localhost:5672", "AMQP server address")
+	pubKey   = flag.String("pubKey", "config/rsa-key.pub", "Path to public key")
+	ex       = flag.String("exchange", "peatio.events.ranger", "Exchange name of upstream messages")
 )
 
 const prefix = "Bearer "
@@ -61,8 +67,17 @@ func main() {
 		return
 	}
 
-	go hub.Run()
-	go upstream.AMQPUpstream(hub.Messages)
+	rand.Seed(time.Now().UnixNano())
+	qName := fmt.Sprintf("rango.instance.%d", rand.Int())
+	ach, err := upstream.NewAMQPSession(*amqpAddr).Stream(*ex, qName)
+
+	go hub.ListenWebsocketEvents()
+	go hub.ListenAMQP(ach)
+
+	if err != nil {
+		log.Fatal().Msgf("AMQP init failed: %s", err.Error())
+		return
+	}
 
 	wsHandler := func(w http.ResponseWriter, r *http.Request) {
 		routing.NewClient(hub, w, r)
@@ -72,8 +87,8 @@ func main() {
 	http.HandleFunc("/public", authHandler(wsHandler, ks.PublicKey, false))
 	http.HandleFunc("/", authHandler(wsHandler, ks.PublicKey, false))
 
-	log.Printf("Listenning on %s", *addr)
-	err := http.ListenAndServe(*addr, nil)
+	log.Printf("Listenning on %s", *wsAddr)
+	err = http.ListenAndServe(*wsAddr, nil)
 	if err != nil {
 		log.Fatal().Msg("ListenAndServe failed: " + err.Error())
 	}

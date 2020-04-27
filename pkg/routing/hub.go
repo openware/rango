@@ -2,10 +2,12 @@ package routing
 
 import (
 	"fmt"
+	"strings"
 
 	msg "github.com/openware/rango/pkg/message"
-	"github.com/openware/rango/pkg/upstream"
+	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
+	"github.com/streadway/amqp"
 )
 
 type Request struct {
@@ -16,10 +18,6 @@ type Request struct {
 // Hub maintains the set of active clients and broadcasts messages to the
 // clients.
 type Hub struct {
-	// Registered clients.
-	// Inbound Messages from the clients.
-	Messages chan upstream.Msg
-
 	// Register Requests from the clients.
 	Requests chan Request
 
@@ -27,19 +25,30 @@ type Hub struct {
 	Unregister chan *Client
 
 	// List of clients registered to Topics
-	Topics map[string]*Topic
+	PublicTopics map[string]*Topic
+}
+
+type Message struct {
+	Scope  string // global, public, private
+	Stream string
+	Type   string
+	Topic  string
+	Body   []byte
 }
 
 func NewHub() *Hub {
 	return &Hub{
-		Requests:   make(chan Request),
-		Unregister: make(chan *Client),
-		Topics:     make(map[string]*Topic),
-		Messages:   make(chan upstream.Msg),
+		Requests:     make(chan Request),
+		Unregister:   make(chan *Client),
+		PublicTopics: make(map[string]*Topic),
 	}
 }
 
-func (h *Hub) Run() {
+func getTopic(s, t string) string {
+	return s + "." + t
+}
+
+func (h *Hub) ListenWebsocketEvents() {
 	for {
 		select {
 		case req := <-h.Requests:
@@ -49,20 +58,66 @@ func (h *Hub) Run() {
 			h.unsubscribeAll(client)
 			close(client.send)
 
-		case message := <-h.Messages:
-			topic, ok := h.Topics[message.Channel]
-			if !ok {
-				topic = NewTopic(h)
-				h.Topics[message.Channel] = topic
-			}
-
-			topic.broadcast(message)
 		}
 	}
 }
 
+func (h *Hub) ListenAMQP(q <-chan amqp.Delivery) {
+	for {
+		delivery := <-q
+		if log.Logger.GetLevel() <= zerolog.DebugLevel {
+			log.Debug().Msgf("AMQP msg received: %s -> %s", delivery.RoutingKey, delivery.Body)
+		}
+		s := strings.Split(delivery.RoutingKey, ".")
+		switch len(s) {
+		case 2:
+			msg := Message{
+				Scope:  s[0],
+				Stream: "",
+				Type:   s[1],
+				Topic:  getTopic(s[0], s[1]),
+				Body:   delivery.Body,
+			}
+
+			h.routeMessage(&msg)
+
+		case 3:
+			msg := Message{
+				Scope:  s[0],
+				Stream: s[1],
+				Type:   s[2],
+				Topic:  getTopic(s[1], s[2]),
+				Body:   delivery.Body,
+			}
+
+			h.routeMessage(&msg)
+
+		default:
+			log.Error().Msgf("Bad routing key: %s", delivery.RoutingKey)
+		}
+		delivery.Ack(true)
+	}
+}
+
+func (h *Hub) routeMessage(msg *Message) {
+	switch msg.Scope {
+	case "public", "global":
+		topic, ok := h.PublicTopics[msg.Stream]
+		if ok {
+			topic.broadcast(msg)
+		}
+
+	case "private":
+		// TODO
+
+	default:
+		log.Error().Msgf("Invalid message scope %s", msg.Scope)
+	}
+
+}
+
 func (h *Hub) unsubscribeAll(client *Client) {
-	for _, topic := range h.Topics {
+	for _, topic := range h.PublicTopics {
 		topic.unsubscribe(client)
 	}
 }
@@ -80,9 +135,9 @@ func responseMust(e error, r interface{}) []byte {
 func (h *Hub) handleRequest(req Request) {
 	switch req.Method {
 	case "subscribe":
-		h.hanldeSubscribe(req)
+		h.handleSubscribe(req)
 	case "unsubscribe":
-		h.hanldeUnsubscribe(req)
+		h.handleUnsubscribe(req)
 	default:
 		// req.client.send <- responseMust(1, errors.New("unsupported method"), nil)
 	}
@@ -98,14 +153,14 @@ func getStringArgs(params []string) ([]string, error) {
 	return topics, nil
 }
 
-func (h *Hub) hanldeSubscribe(req Request) {
+func (h *Hub) handleSubscribe(req Request) {
 	topics, err := getStringArgs(req.Streams)
 	if err != nil {
 		req.client.send <- responseMust(err, nil)
 	}
 
 	for _, t := range topics {
-		topic, ok := h.Topics[t]
+		topic, ok := h.PublicTopics[t]
 		if !ok {
 			topic = NewTopic(h)
 		}
@@ -119,7 +174,7 @@ func (h *Hub) hanldeSubscribe(req Request) {
 	}
 }
 
-func (h *Hub) hanldeUnsubscribe(req Request) {
+func (h *Hub) handleUnsubscribe(req Request) {
 	topics, err := getStringArgs(req.Streams)
 	if err != nil {
 		req.client.send <- responseMust(err, nil)
@@ -127,7 +182,7 @@ func (h *Hub) hanldeUnsubscribe(req Request) {
 
 	fmt.Println(topics)
 	for _, t := range topics {
-		topic, ok := h.Topics[t]
+		topic, ok := h.PublicTopics[t]
 		if !ok {
 			req.client.send <- responseMust(fmt.Errorf("Topic does not exist %s", t), nil)
 			return

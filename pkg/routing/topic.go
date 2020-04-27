@@ -4,7 +4,6 @@ import (
 	"container/ring"
 
 	msg "github.com/openware/rango/pkg/message"
-	"github.com/openware/rango/pkg/upstream"
 	"github.com/rs/zerolog/log"
 )
 
@@ -34,7 +33,7 @@ func eventMust(method string, data interface{}) []byte {
 	return ev
 }
 
-func (t *Topic) broadcast(message upstream.Msg) {
+func (t *Topic) broadcast(message *Message) {
 	if t == nil {
 		panic("Topic not initialized")
 	}
@@ -44,7 +43,7 @@ func (t *Topic) broadcast(message upstream.Msg) {
 
 	for client := range t.clients {
 		select {
-		case client.send <- eventMust(message.Channel, message.Message):
+		case client.send <- message.Body:
 		default:
 			t.hub.Unregister <- client
 		}

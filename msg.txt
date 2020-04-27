@@ -1,0 +1,10 @@
+public.global.tickers {"eurusd":{"name":"EUR/USD","base_unit":"eur","quote_unit":"usd","low":"1000.0","high":"10000.0","last":"1000.0","open":1000.0,"volume":"0.0","sell":"1020.0","buy":"1000.0","at":1588001398}}
+public.eurusd.update {"asks":[["1020.0","0.005"],["1026.0","0.03"]],"bids":[["1000.0","0.25"],["999.0","0.005"],["994.0","0.005"],["1.0","11.0"]]}
+private.IDABC0000001.order {"id":22,"at":1588000798,"market":"eurusd","kind":"bid","price":"1026.0","state":"wait","volume":"0.001","origin_volume":"0.001"}
+private.IDABC0000001.trade {"id":7,"kind":"ask","at":1588000798,"price":"1020.0","volume":"0.001","ask_id":15,"bid_id":22,"market":"eurusd"}
+private.IDABC0000002.trade {"id":7,"kind":"bid","at":1588000798,"price":"1020.0","volume":"0.001","ask_id":15,"bid_id":22,"market":"eurusd"}
+public.eurusd.trades {"trades":[{"tid":7,"taker_type":"buy","date":1588000798,"price":"1020.0","amount":"0.001"}]}
+public.eurusd.ob-inc {"asks":[["1020.0","0.015"]]}
+public.eurusd.ob-snap {"asks":[["1020.0","0.005"],["1026.0","0.03"]],"bids":[["1000.0","0.25"],["999.0","0.005"],["994.0","0.005"],["1.0","11.0"]]}
+public.eurusd.ob-inc {"bids":[["1000.0","0"]]}
+public.eurusd.ob-inc {"bids":[["999.0","0.001"]]}
