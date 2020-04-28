@@ -36,7 +36,7 @@ var upgrader = websocket.Upgrader{
 }
 
 type IClient interface {
-	Send([]byte)
+	Send(string)
 	Close()
 	GetUID() string
 	GetSubscriptions() []string
@@ -89,8 +89,8 @@ func NewClient(hub *Hub, w http.ResponseWriter, r *http.Request) {
 	go client.read()
 }
 
-func (c *Client) Send(m []byte) {
-	c.send <- m
+func (c *Client) Send(s string) {
+	c.send <- []byte(s)
 }
 
 func (c *Client) Close() {
@@ -171,7 +171,7 @@ func (c *Client) read() {
 		}
 		req, err := msg.ParseRequest(message)
 		if err != nil {
-			c.send <- responseMust(err, nil)
+			c.send <- []byte(responseMust(err, nil))
 			continue
 		}
 

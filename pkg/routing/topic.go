@@ -61,7 +61,7 @@ func (t *Topic) broadcast(message *Event) {
 	}
 
 	for client := range t.clients {
-		client.Send(body)
+		client.Send(string(body))
 	}
 }
 

@@ -156,14 +156,14 @@ func (h *Hub) unsubscribeAll(client IClient) {
 	}
 }
 
-func responseMust(e error, r interface{}) []byte {
+func responseMust(e error, r interface{}) string {
 	res, err := msg.PackOutgoingResponse(e, r)
 	if err != nil {
 		log.Panic().Msg("responseMust failed:" + err.Error())
 		panic(err.Error())
 	}
 
-	return res
+	return string(res)
 }
 
 func isPrivateStream(s string) bool {
@@ -196,7 +196,7 @@ func (h *Hub) handleSubscribe(req Request) {
 				h.PrivateTopics[uid] = uTopics
 			}
 
-			topic := uTopics[t]
+			topic, ok := uTopics[t]
 			if !ok {
 				topic = NewTopic(h)
 				uTopics[t] = topic
