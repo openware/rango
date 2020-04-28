@@ -5,11 +5,13 @@ import (
 	"flag"
 	"fmt"
 	"net/http"
+	"os"
 	"strings"
 	"time"
 
 	"math/rand"
 
+	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 
 	"github.com/openware/rango/pkg/auth"
@@ -56,8 +58,24 @@ func authHandler(h httpHanlder, key *rsa.PublicKey, mustAuth bool) httpHanlder {
 	}
 }
 
+func setupLogger() {
+	logLevel, ok := os.LookupEnv("LOG_LEVEL")
+	if ok {
+		level, err := zerolog.ParseLevel(strings.ToLower(logLevel))
+		if err != nil {
+			panic(err)
+		}
+
+		zerolog.SetGlobalLevel(level)
+		return
+	}
+
+	zerolog.SetGlobalLevel(zerolog.DebugLevel)
+}
+
 func main() {
 	flag.Parse()
+	setupLogger()
 	hub := routing.NewHub()
 
 	ks := auth.KeyStore{}

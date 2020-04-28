@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"flag"
 	"fmt"
 	"os"
 	"strings"
@@ -11,14 +12,16 @@ import (
 	"github.com/rs/zerolog/log"
 )
 
-func main() {
-	addr := "amqp://guest:guest@localhost:5672/"
-	mq := upstream.NewAMQPSession("", addr)
+var (
+	ex       = flag.String("exchange", "peatio.events.ranger", "Exchange name of upstream messages")
+	amqpAddr = flag.String("amqp-addr", "amqp://localhost:5672", "AMQP server address")
+	wait     = flag.Int64("wait", 2, "Time to wait between submit batch of messages")
+)
 
-	for !mq.IsReady {
-		log.Info().Msg("Not connected, waiting")
-		time.Sleep(time.Second * 1)
-	}
+func main() {
+	flag.Parse()
+
+	mq := upstream.NewAMQPSession(*amqpAddr)
 
 	for {
 		file, err := os.Open("msg.txt")
@@ -33,7 +36,7 @@ func main() {
 
 			msg := strings.Split(scanner.Text(), " ")
 
-			if err := mq.Push(upstream.PeatioRangerEventsEx, msg[0], []byte(msg[1])); err != nil {
+			if err := mq.Push(*ex, msg[0], []byte(msg[1])); err != nil {
 				fmt.Printf("Push failed: %s\n", err)
 			} else {
 				log.Info().Msgf("Pushed on %s msg: %s", msg[0], msg[1])
@@ -41,7 +44,7 @@ func main() {
 
 		}
 		file.Close()
-		log.Info().Msg("Waiting 5 seconds")
-		time.Sleep(time.Second * 5)
+		log.Info().Msgf("Waiting %d seconds", *wait)
+		time.Sleep(time.Duration(int64(time.Second) * *wait))
 	}
 }

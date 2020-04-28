@@ -10,25 +10,19 @@ type Request struct {
 	Streams []string
 }
 
-type NewResponse struct {
-	Resp map[string]interface{}
-}
-
-func Response(err error, message interface{}) ([]byte, error) {
-	// TODO: Response method
-	res := make(map[string]interface{}, 3)
+func PackOutgoingResponse(err error, message interface{}) ([]byte, error) {
+	res := make(map[string]interface{}, 1)
 	if err != nil {
 		fmt.Println(err)
-		res["unsuccess"] = err.Error()
+		res["error"] = err.Error()
 	} else {
 		res["success"] = message
 	}
 	return json.Marshal(res)
 }
 
-func Event(channel string, data interface{}) ([]byte, error) {
-	// TODO: Event method
-	resp := make(map[string]interface{})
+func PackOutgoingEvent(channel string, data interface{}) ([]byte, error) {
+	resp := make(map[string]interface{}, 1)
 	resp[channel] = data
 	return json.Marshal(resp)
 }
