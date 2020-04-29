@@ -48,7 +48,7 @@ func (c *MockedClient) UnsubscribePrivate(s string) {
 
 func setup(c *MockedClient, streams []string) *Hub {
 	h := NewHub()
-	h.handleSubscribe(Request{
+	h.handleSubscribe(&Request{
 		client: c,
 		Request: message.Request{
 			Streams: streams,
@@ -58,7 +58,7 @@ func setup(c *MockedClient, streams []string) *Hub {
 }
 
 func teardown(h *Hub, c *MockedClient, streams []string) {
-	h.handleUnsubscribe(Request{
+	h.handleUnsubscribe(&Request{
 		client: c,
 		Request: message.Request{
 			Streams: streams,
@@ -67,7 +67,6 @@ func teardown(h *Hub, c *MockedClient, streams []string) {
 }
 
 func TestAnonymous(t *testing.T) {
-
 	t.Run("subscribe to a public single stream", func(t *testing.T) {
 		c := &MockedClient{}
 
@@ -221,4 +220,113 @@ func TestAuthenticated(t *testing.T) {
 		assert.Equal(t, 0, len(h.PublicTopics))
 		assert.Equal(t, 0, len(h.PrivateTopics))
 	})
+}
+
+func TestIsIncremental(t *testing.T) {
+	assert.True(t, isIncrementObject("public.eurusd.ob-inc"))
+	assert.False(t, isIncrementObject("public.eurusd.ob-snap"))
+	assert.False(t, isIncrementObject("public.eurusd.ob"))
+
+	assert.True(t, isSnapshotObject("public.eurusd.ob-snap"))
+	assert.False(t, isSnapshotObject("public.eurusd.ob-inc"))
+	assert.False(t, isSnapshotObject("public.eurusd.ob"))
+}
+
+func TestGetTopic(t *testing.T) {
+	assert.Equal(t, "abc.count", getTopic("public", "abc", "count"))
+	assert.Equal(t, "count", getTopic("private", "abc", "count"))
+	assert.Equal(t, "abc.count-inc", getTopic("public", "abc", "count-inc"))
+	assert.Equal(t, "abc.count-inc", getTopic("public", "abc", "count-snap"))
+}
+
+func TestIncrementalObjectStorage(t *testing.T) {
+	h := NewHub()
+
+	// Increments before the first snapshot must be ignored
+	h.routeMessage(&Event{
+		Scope:  "public",
+		Stream: "abc",
+		Type:   "count-inc",
+		Topic:  "abc.count-inc",
+		Body: map[string]interface{}{
+			"data":     1,
+			"sequence": 11,
+		},
+	})
+
+	require.Equal(t, 0, len(h.IncrementalObjects))
+
+	// Initial snapshot
+	h.routeMessage(&Event{
+		Scope:  "public",
+		Stream: "abc",
+		Type:   "count-snap",
+		Topic:  "abc.count-inc",
+		Body: map[string]interface{}{
+			"data":     []int{2, 3, 4},
+			"sequence": 12,
+		},
+	})
+
+	require.Equal(t, 1, len(h.IncrementalObjects))
+
+	o, ok := h.IncrementalObjects["abc.count-inc"]
+	require.True(t, ok)
+	require.Equal(t, 0, len(o.Increments))
+	require.Equal(t, `{"abc.count-snap":{"data":[2,3,4],"sequence":12}}`, o.Snapshot)
+
+	// First Increment
+	h.routeMessage(&Event{
+		Scope:  "public",
+		Stream: "abc",
+		Type:   "count-inc",
+		Topic:  "abc.count-inc",
+		Body: map[string]interface{}{
+			"data":     5,
+			"sequence": 13,
+		},
+	})
+	require.Equal(t, 1, len(h.IncrementalObjects))
+	o, ok = h.IncrementalObjects["abc.count-inc"]
+	require.True(t, ok)
+	require.Equal(t, 1, len(o.Increments))
+	require.Equal(t, `{"abc.count-snap":{"data":[2,3,4],"sequence":12}}`, o.Snapshot)
+	require.Equal(t, `{"abc.count-inc":{"data":5,"sequence":13}}`, o.Increments[0])
+
+	// Second Increment
+	h.routeMessage(&Event{
+		Scope:  "public",
+		Stream: "abc",
+		Type:   "count-inc",
+		Topic:  "abc.count-inc",
+		Body: map[string]interface{}{
+			"data":     6,
+			"sequence": 14,
+		},
+	})
+	require.Equal(t, 1, len(h.IncrementalObjects))
+	o, ok = h.IncrementalObjects["abc.count-inc"]
+	require.True(t, ok)
+	require.Equal(t, 2, len(o.Increments))
+	require.Equal(t, `{"abc.count-snap":{"data":[2,3,4],"sequence":12}}`, o.Snapshot)
+	require.Equal(t, `{"abc.count-inc":{"data":5,"sequence":13}}`, o.Increments[0])
+	require.Equal(t, `{"abc.count-inc":{"data":6,"sequence":14}}`, o.Increments[1])
+
+	// Second snapshot
+	h.routeMessage(&Event{
+		Scope:  "public",
+		Stream: "abc",
+		Type:   "count-snap",
+		Topic:  "abc.count-inc",
+		Body: map[string]interface{}{
+			"data":     []int{2, 3, 4, 5, 6},
+			"sequence": 14,
+		},
+	})
+
+	require.Equal(t, 1, len(h.IncrementalObjects))
+	o, ok = h.IncrementalObjects["abc.count-inc"]
+	require.True(t, ok)
+	require.Equal(t, 0, len(o.Increments))
+	require.Equal(t, `{"abc.count-snap":{"data":[2,3,4,5,6],"sequence":14}}`, o.Snapshot)
 }

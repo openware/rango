@@ -1,27 +1,21 @@
 package routing
 
 import (
-	"container/ring"
 	"encoding/json"
 
 	msg "github.com/openware/rango/pkg/message"
 	"github.com/rs/zerolog/log"
 )
 
-const TopicBufferSize = 10
-
 type Topic struct {
 	hub     *Hub
 	clients map[IClient]struct{}
-
-	buffer *ring.Ring
 }
 
 func NewTopic(h *Hub) *Topic {
 	return &Topic{
 		clients: make(map[IClient]struct{}),
 		hub:     h,
-		buffer:  ring.New(TopicBufferSize),
 	}
 }
 
@@ -48,9 +42,6 @@ func (t *Topic) len() int {
 }
 
 func (t *Topic) broadcast(message *Event) {
-	t.buffer.Value = message
-	t.buffer = t.buffer.Next()
-
 	body, err := json.Marshal(map[string]interface{}{
 		message.Topic: message.Body,
 	})
@@ -62,6 +53,12 @@ func (t *Topic) broadcast(message *Event) {
 
 	for client := range t.clients {
 		client.Send(string(body))
+	}
+}
+
+func (t *Topic) broadcastRaw(topic, msgBody string) {
+	for client := range t.clients {
+		client.Send(msgBody)
 	}
 }
 

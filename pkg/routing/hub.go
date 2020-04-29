@@ -3,6 +3,7 @@ package routing
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"strings"
 
 	msg "github.com/openware/rango/pkg/message"
@@ -30,6 +31,9 @@ type Hub struct {
 
 	// List of clients registered to private topics
 	PrivateTopics map[string]map[string]*Topic
+
+	// Storage for incremental objects
+	IncrementalObjects map[string]*IncrementalObject
 }
 
 type Event struct {
@@ -40,16 +44,33 @@ type Event struct {
 	Body   map[string]interface{} // event json body
 }
 
+type IncrementalObject struct {
+	Snapshot   string
+	Increments []string
+}
+
 func NewHub() *Hub {
 	return &Hub{
-		Requests:      make(chan Request),
-		Unregister:    make(chan IClient),
-		PublicTopics:  make(map[string]*Topic, 100),
-		PrivateTopics: make(map[string]map[string]*Topic, 1000),
+		Requests:           make(chan Request),
+		Unregister:         make(chan IClient),
+		PublicTopics:       make(map[string]*Topic, 100),
+		PrivateTopics:      make(map[string]map[string]*Topic, 1000),
+		IncrementalObjects: make(map[string]*IncrementalObject, 5),
 	}
 }
 
+func isIncrementObject(s string) bool {
+	return strings.HasSuffix(s, "-inc")
+}
+
+func isSnapshotObject(s string) bool {
+	return strings.HasSuffix(s, "-snap")
+}
+
 func getTopic(scope, stream, typ string) string {
+	if isSnapshotObject(typ) {
+		typ = strings.Replace(typ, "-snap", "-inc", 1)
+	}
 	if scope == "private" {
 		return typ
 	}
@@ -60,7 +81,7 @@ func (h *Hub) ListenWebsocketEvents() {
 	for {
 		select {
 		case req := <-h.Requests:
-			h.handleRequest(req)
+			h.handleRequest(&req)
 
 		case client := <-h.Unregister:
 			log.Info().Msgf("Unregistering client %s", client.GetUID())
@@ -115,11 +136,71 @@ func (h *Hub) ListenAMQP(q <-chan amqp.Delivery) {
 	}
 }
 
+func (h *Hub) handleSnapshot(msg *Event) (string, error) {
+	topic := msg.Stream + "." + msg.Type
+	body, err := json.Marshal(map[string]interface{}{
+		topic: msg.Body,
+	})
+
+	if err != nil {
+		return "", err
+	}
+
+	o, ok := h.IncrementalObjects[msg.Topic]
+	if !ok {
+		o = &IncrementalObject{}
+		h.IncrementalObjects[msg.Topic] = o
+	}
+	o.Snapshot = string(body)
+	o.Increments = []string{}
+
+	return string(body), nil
+}
+
+func (h *Hub) handleIncrement(msg *Event) (string, error) {
+	body, err := json.Marshal(map[string]interface{}{
+		msg.Topic: msg.Body,
+	})
+
+	if err != nil {
+		return "", err
+	}
+
+	o, ok := h.IncrementalObjects[msg.Topic]
+	if !ok {
+		return "", fmt.Errorf("No snapshot received before the increment for topic %s, ignoring", msg.Topic)
+	}
+	o.Increments = append(o.Increments, string(body))
+	return string(body), nil
+
+}
+
 func (h *Hub) routeMessage(msg *Event) {
 	log.Info().Msgf("Routing message %v", msg)
 	switch msg.Scope {
 	case "public", "global":
 		topic, ok := h.PublicTopics[msg.Topic]
+
+		switch {
+		case isIncrementObject(msg.Type):
+			rm, err := h.handleIncrement(msg)
+			if err != nil {
+				log.Error().Msgf("handleIncrement failed: %s", err.Error())
+				return
+			}
+			if ok {
+				topic.broadcastRaw(msg.Topic, rm)
+			}
+			return
+		case isSnapshotObject(msg.Type):
+			_, err := h.handleSnapshot(msg)
+			if err != nil {
+				log.Error().Msgf("handleSnapshot failed: %s", err.Error())
+				return
+			}
+			return
+		}
+
 		if ok {
 			topic.broadcast(msg)
 		} else {
@@ -170,7 +251,7 @@ func isPrivateStream(s string) bool {
 	return strings.Count(s, ".") == 0
 }
 
-func (h *Hub) handleRequest(req Request) {
+func (h *Hub) handleRequest(req *Request) {
 	switch req.Method {
 	case "subscribe":
 		h.handleSubscribe(req)
@@ -181,12 +262,12 @@ func (h *Hub) handleRequest(req Request) {
 	}
 }
 
-func (h *Hub) handleSubscribe(req Request) {
+func (h *Hub) handleSubscribe(req *Request) {
 	for _, t := range req.Streams {
 		if isPrivateStream(t) {
 			uid := req.client.GetUID()
 			if uid == "" {
-				log.Error().Msgf("Anonymous user tries to subscribe to private stream %s", t)
+				log.Error().Msgf("Anonymous user tried to subscribe to private stream %s", t)
 				continue
 			}
 
@@ -213,6 +294,15 @@ func (h *Hub) handleSubscribe(req Request) {
 
 			topic.subscribe(req.client)
 			req.client.SubscribePublic(t)
+			if isIncrementObject(t) {
+				o, ok := h.IncrementalObjects[t]
+				if ok && o.Snapshot != "" {
+					req.client.Send(o.Snapshot)
+					for _, inc := range o.Increments {
+						req.client.Send(inc)
+					}
+				}
+			}
 		}
 	}
 
@@ -224,7 +314,7 @@ func (h *Hub) handleSubscribe(req Request) {
 	}))
 }
 
-func (h *Hub) handleUnsubscribe(req Request) {
+func (h *Hub) handleUnsubscribe(req *Request) {
 	for _, t := range req.Streams {
 		if isPrivateStream(t) {
 			uid := req.client.GetUID()

@@ -3,6 +3,7 @@ package routing
 import (
 	"bytes"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/gorilla/websocket"
@@ -71,10 +72,12 @@ func NewClient(hub *Hub, w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	client := &Client{
-		hub:  hub,
-		conn: conn,
-		send: make(chan []byte, 256),
-		UID:  r.Header.Get("JwtUID"),
+		hub:     hub,
+		conn:    conn,
+		send:    make(chan []byte, 256),
+		UID:     r.Header.Get("JwtUID"),
+		pubSub:  []string{},
+		privSub: []string{},
 	}
 
 	if client.UID == "" {
@@ -82,6 +85,13 @@ func NewClient(hub *Hub, w http.ResponseWriter, r *http.Request) {
 	} else {
 		log.Info().Msgf("New authenticated connection: %s", client.UID)
 	}
+
+	hub.handleSubscribe(&Request{
+		client: client,
+		Request: msg.Request{
+			Streams: parseStreamsFromURI(r.RequestURI),
+		},
+	})
 
 	// Allow collection of memory referenced by the caller by doing all work in
 	// new goroutines.
@@ -141,6 +151,20 @@ func (c *Client) UnsubscribePrivate(s string) {
 	c.privSub = l
 }
 
+func parseStreamsFromURI(uri string) []string {
+	streams := make([]string, 0)
+	uri = strings.Trim(uri, "/?")
+	for _, up := range strings.Split(uri, "&") {
+		p := strings.Split(up, "=")
+		if len(p) != 2 || p[0] != "stream" {
+			continue
+		}
+		streams = append(streams, strings.Split(p[1], ",")...)
+
+	}
+	return streams
+}
+
 // read pumps messages from the websocket connection to the hub.
 //
 // The application runs read in a per-connection goroutine. The application
@@ -166,6 +190,9 @@ func (c *Client) read() {
 			break
 		}
 		message = bytes.TrimSpace(bytes.Replace(message, newline, space, -1))
+		if len(message) == 0 {
+			continue
+		}
 		if log.Logger.GetLevel() <= zerolog.DebugLevel {
 			log.Debug().Msgf("Received message %s", message)
 		}
