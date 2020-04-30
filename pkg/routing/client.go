@@ -61,7 +61,8 @@ type Client struct {
 	conn *websocket.Conn
 
 	// Buffered channel of outbound messages.
-	send chan []byte
+	send   chan []byte
+	closed bool
 }
 
 // NewClient handles websocket requests from the peer.
@@ -75,6 +76,7 @@ func NewClient(hub *Hub, w http.ResponseWriter, r *http.Request) {
 		hub:     hub,
 		conn:    conn,
 		send:    make(chan []byte, 256),
+		closed:  false,
 		UID:     r.Header.Get("JwtUID"),
 		pubSub:  []string{},
 		privSub: []string{},
@@ -100,10 +102,13 @@ func NewClient(hub *Hub, w http.ResponseWriter, r *http.Request) {
 }
 
 func (c *Client) Send(s string) {
-	c.send <- []byte(s)
+	if !c.closed {
+		c.send <- []byte(s)
+	}
 }
 
 func (c *Client) Close() {
+	c.closed = true
 	close(c.send)
 }
 
