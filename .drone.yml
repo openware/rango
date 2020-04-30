@@ -1,0 +1,45 @@
+---
+kind: pipeline
+name: default
+
+steps:
+  - name: Go test
+    image: golang:1.13
+    environment:
+      GO111MODULE: on
+    commands:
+      - go mod download
+      - go test ./... --cover --count=100
+
+  - name: "Bump & Tag"
+    image: quay.io/openware/sdk-citools:2.4.0-5783971
+    environment:
+      BRANCH_NAME: ${DRONE_BRANCH}
+      REPO_NAME: openware/rango
+      GITHUB_API_KEY:
+        from_secret: kite_bot_key
+    commands:
+      - BUNDLE_GEMFILE=/sdk/Gemfile bundle exec rake --rakefile=/sdk/Rakefile ci:prebuild
+    when:
+      branch:
+        - master
+
+  - name: Build container
+    image: plugins/docker
+    settings:
+      username:
+        from_secret: quay_username
+      password:
+        from_secret: quay_password
+      repo: quay.io/openware/rango
+      registry: quay.io
+    when:
+      branch:
+        - master
+
+trigger:
+  event:
+    - push
+
+image_pull_secrets:
+  - dockerconfigjson
