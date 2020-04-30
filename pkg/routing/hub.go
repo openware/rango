@@ -37,11 +37,11 @@ type Hub struct {
 }
 
 type Event struct {
-	Scope  string                 // global, public, private
-	Stream string                 // channel routing key
-	Type   string                 // event type
-	Topic  string                 // topic routing key (stream.type)
-	Body   map[string]interface{} // event json body
+	Scope  string      // global, public, private
+	Stream string      // channel routing key
+	Type   string      // event type
+	Topic  string      // topic routing key (stream.type)
+	Body   interface{} // event json body
 }
 
 type IncrementalObject struct {
@@ -99,7 +99,7 @@ func (h *Hub) ListenAMQP(q <-chan amqp.Delivery) {
 		}
 		s := strings.Split(delivery.RoutingKey, ".")
 
-		o := make(map[string]interface{})
+		var o interface{}
 		err := json.Unmarshal(delivery.Body, &o)
 
 		if err != nil {
