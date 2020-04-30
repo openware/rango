@@ -20,8 +20,8 @@ import (
 )
 
 var (
-	wsAddr   = flag.String("ws-addr", ":8080", "http service address")
-	amqpAddr = flag.String("amqp-addr", "amqp://localhost:5672", "AMQP server address")
+	wsAddr   = flag.String("ws-addr", "", "http service address")
+	amqpAddr = flag.String("amqp-addr", "", "AMQP server address")
 	pubKey   = flag.String("pubKey", "config/rsa-key.pub", "Path to public key")
 	ex       = flag.String("exchange", "peatio.events.ranger", "Exchange name of upstream messages")
 )
@@ -73,21 +73,68 @@ func setupLogger() {
 	zerolog.SetGlobalLevel(zerolog.DebugLevel)
 }
 
+func getPublicKey() (pub *rsa.PublicKey, err error) {
+	ks := auth.KeyStore{}
+	encPem := os.Getenv("JWT_PUBLIC_KEY")
+
+	if encPem != "" {
+		ks.LoadPublicKeyFromString(encPem)
+	} else {
+		ks.LoadPublicKeyFromFile(*pubKey)
+	}
+	if err != nil {
+		return nil, err
+	}
+	if ks.PublicKey == nil {
+		return nil, fmt.Errorf("failed")
+	}
+	return ks.PublicKey, nil
+}
+
+func getEnv(name, value string) string {
+	v := os.Getenv(name)
+	if v == "" {
+		return value
+	}
+	return v
+}
+
+func getAMQPConnectionURL() string {
+	if *amqpAddr != "" {
+		return *amqpAddr
+	}
+
+	user := getEnv("RABBITMQ_USER", "guest")
+	pass := getEnv("RABBITMQ_PASSWORD", "guest")
+	host := getEnv("RABBITMQ_HOST", "localhost")
+	port := getEnv("RABBITMQ_PORT", "5672")
+
+	return fmt.Sprintf("amqp://%s:%s@%s:%s", user, pass, host, port)
+}
+
+func getServerAddress() string {
+	if *wsAddr != "" {
+		return *wsAddr
+	}
+	host := getEnv("RANGER_HOST", "localhost")
+	port := getEnv("RANGER_PORT", "8080")
+	return fmt.Sprintf("%s:%s", host, port)
+}
+
 func main() {
 	flag.Parse()
 	setupLogger()
 	hub := routing.NewHub()
-
-	ks := auth.KeyStore{}
-	ks.GenerateKeys()
-	if err := ks.LoadPublicKey(*pubKey); err != nil {
-		log.Fatal().Msg("LoadPublicKey failed: " + err.Error())
+	pub, err := getPublicKey()
+	if err != nil {
+		log.Error().Msgf("Loading public key failed: %s", err.Error())
+		time.Sleep(2 * time.Second)
 		return
 	}
 
 	rand.Seed(time.Now().UnixNano())
 	qName := fmt.Sprintf("rango.instance.%d", rand.Int())
-	ach, err := upstream.NewAMQPSession(*amqpAddr).Stream(*ex, qName)
+	ach, err := upstream.NewAMQPSession(getAMQPConnectionURL()).Stream(*ex, qName)
 
 	go hub.ListenWebsocketEvents()
 	go hub.ListenAMQP(ach)
@@ -101,12 +148,12 @@ func main() {
 		routing.NewClient(hub, w, r)
 	}
 
-	http.HandleFunc("/private", authHandler(wsHandler, ks.PublicKey, true))
-	http.HandleFunc("/public", authHandler(wsHandler, ks.PublicKey, false))
-	http.HandleFunc("/", authHandler(wsHandler, ks.PublicKey, false))
+	http.HandleFunc("/private", authHandler(wsHandler, pub, true))
+	http.HandleFunc("/public", authHandler(wsHandler, pub, false))
+	http.HandleFunc("/", authHandler(wsHandler, pub, false))
 
-	log.Printf("Listenning on %s", *wsAddr)
-	err = http.ListenAndServe(*wsAddr, nil)
+	log.Printf("Listenning on %s", getServerAddress())
+	err = http.ListenAndServe(getServerAddress(), nil)
 	if err != nil {
 		log.Fatal().Msg("ListenAndServe failed: " + err.Error())
 	}

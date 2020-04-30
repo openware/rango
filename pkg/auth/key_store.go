@@ -4,6 +4,7 @@ import (
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/x509"
+	"encoding/base64"
 	"encoding/pem"
 	"io/ioutil"
 	"os"
@@ -37,7 +38,7 @@ func LoadOrGenerateKeys(privPath, pubPath string) (*KeyStore, error) {
 	}
 
 	if fileExist(pubPath) {
-		if err = ks.LoadPublicKey(pubPath); err != nil {
+		if err = ks.LoadPublicKeyFromFile(pubPath); err != nil {
 			return ks, err
 		}
 	} else {
@@ -53,13 +54,13 @@ func LoadOrGenerateKeys(privPath, pubPath string) (*KeyStore, error) {
 	return ks, nil
 }
 
-func (ks *KeyStore) LoadPublicKey(path string) error {
-	file, err := ioutil.ReadFile(path)
+func (ks *KeyStore) LoadPublicKeyFromFile(path string) error {
+	pem, err := ioutil.ReadFile(path)
 	if err != nil {
 		return err
 	}
 
-	key, err := jwt.ParseRSAPublicKeyFromPEM(file)
+	key, err := jwt.ParseRSAPublicKeyFromPEM(pem)
 	if err != nil {
 		return err
 	}
@@ -69,19 +70,33 @@ func (ks *KeyStore) LoadPublicKey(path string) error {
 	return nil
 }
 
-func (ks *KeyStore) LoadPrivateKey(path string) error {
-	file, err := ioutil.ReadFile(path)
+func (ks *KeyStore) LoadPublicKeyFromString(str string) error {
+	pem, err := base64.StdEncoding.DecodeString(str)
 	if err != nil {
 		return err
 	}
 
-	key, err := jwt.ParseRSAPrivateKeyFromPEM(file)
+	key, err := jwt.ParseRSAPublicKeyFromPEM(pem)
+	if err != nil {
+		return err
+	}
+
+	ks.PublicKey = key
+	return nil
+}
+
+func (ks *KeyStore) LoadPrivateKey(path string) error {
+	pem, err := ioutil.ReadFile(path)
+	if err != nil {
+		return err
+	}
+
+	key, err := jwt.ParseRSAPrivateKeyFromPEM(pem)
 	if err != nil {
 		return err
 	}
 
 	ks.PrivateKey = key
-
 	return nil
 }
 
