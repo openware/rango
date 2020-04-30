@@ -12,7 +12,7 @@ steps:
       - go test ./... --cover --count=100
 
   - name: "Bump & Tag"
-    image: quay.io/openware/sdk-citools:2.4.0-5783971
+    image: quay.io/openware/sdk-citools:2.4.5
     environment:
       BRANCH_NAME: ${DRONE_BRANCH}
       REPO_NAME: openware/rango
@@ -23,6 +23,7 @@ steps:
     when:
       branch:
         - master
+        - "*-stable"
 
   - name: Build container
     image: plugins/docker
@@ -36,6 +37,32 @@ steps:
     when:
       branch:
         - master
+        - "*-stable"
+
+  - name: "Notify"
+    image: quay.io/openware/sdk-citools:2.4.5
+    environment:
+      BOT_USERNAME: kite-bot
+      BOT_NAME: Kite Bot
+      BOT_EMAIL: kite-bot@heliostech.fr
+      BRANCH_NAME: ${DRONE_BRANCH}
+      REPO_NAME: ${DRONE_REPO}
+      SDK_BRANCH: ${DRONE_BRANCH}
+      SLACK_CHANNEL: peatio
+      SLACK_TOKEN:
+        from_secret: slack_token
+      GITHUB_API_KEY:
+        from_secret: kite_bot_key
+      TELEGRAM_BOT_TOKEN:
+        from_secret: telegram_bot_token
+      TELEGRAM_CHAT_ID:
+        from_secret: telegram_chat_id
+    commands:
+      - BUNDLE_GEMFILE=/sdk/Gemfile bundle exec rake --rakefile=/sdk/Rakefile ci:postbuild[/drone/src]
+    when:
+      branch:
+        - master
+        - "*-stable"
 
 trigger:
   event:
