@@ -153,8 +153,11 @@ func (c *Client) UnsubscribePrivate(s string) {
 
 func parseStreamsFromURI(uri string) []string {
 	streams := make([]string, 0)
-	uri = strings.Trim(uri, "/?")
-	for _, up := range strings.Split(uri, "&") {
+	path := strings.Split(uri, "?")
+	if len(path) != 2 {
+		return streams
+	}
+	for _, up := range strings.Split(path[1], "&") {
 		p := strings.Split(up, "=")
 		if len(p) != 2 || p[0] != "stream" {
 			continue
