@@ -176,7 +176,9 @@ func (h *Hub) handleIncrement(msg *Event) (string, error) {
 }
 
 func (h *Hub) routeMessage(msg *Event) {
-	log.Info().Msgf("Routing message %v", msg)
+	
+	log.Debug().Msgf("Routing message %v", msg)
+
 	switch msg.Scope {
 	case "public", "global":
 		topic, ok := h.PublicTopics[msg.Topic]
