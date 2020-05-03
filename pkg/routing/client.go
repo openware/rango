@@ -3,12 +3,11 @@ package routing
 import (
 	"bytes"
 	"net/http"
-	"strings"
 	"time"
 
 	"github.com/gorilla/websocket"
-	msg "github.com/openware/rango/pkg/message"
 	"github.com/openware/rango/pkg/metrics"
+	"github.com/openware/rango/pkg/msg"
 	"github.com/rs/zerolog/log"
 )
 
@@ -154,23 +153,6 @@ func (c *Client) UnsubscribePrivate(s string) {
 	c.privSub = l
 }
 
-func parseStreamsFromURI(uri string) []string {
-	streams := make([]string, 0)
-	path := strings.Split(uri, "?")
-	if len(path) != 2 {
-		return streams
-	}
-	for _, up := range strings.Split(path[1], "&") {
-		p := strings.Split(up, "=")
-		if len(p) != 2 || p[0] != "stream" {
-			continue
-		}
-		streams = append(streams, strings.Split(p[1], ",")...)
-
-	}
-	return streams
-}
-
 // read pumps messages from the websocket connection to the hub.
 //
 // The application runs read in a per-connection goroutine. The application
@@ -211,12 +193,14 @@ func (c *Client) read() {
 			continue
 		}
 
-		req, err := msg.ParseRequest(message)
+		req, err := msg.Parse(message)
 		if err != nil {
-			c.send <- []byte(responseMust(err, nil))
+			log.Error().Msgf("fail to parse message: %s", err.Error())
+			c.send <- msg.NewResponse(&msg.Msg{ReqID: 0}, "error", []interface{}{err.Error()}).Encode()
 			continue
 		}
 
+		log.Debug().Msgf("Pushing request to hub: %v", req)
 		c.hub.Requests <- Request{c, req}
 	}
 }
@@ -249,6 +233,14 @@ func (c *Client) write() {
 				return
 			}
 			w.Write(message)
+
+			// Add queued chat messages to the current websocket message.
+			n := len(c.send)
+			for i := 0; i < n; i++ {
+				w.Write(newline)
+				w.Write(<-c.send)
+			}
+
 			if err := w.Close(); err != nil {
 				return
 			}

@@ -59,11 +59,3 @@ func TestClient(t *testing.T) {
 	assert.Equal(t, []string{}, client.pubSub)
 	assert.Equal(t, []string{}, client.privSub)
 }
-
-func TestParseStreamsFromURI(t *testing.T) {
-	assert.Equal(t, []string{}, parseStreamsFromURI("/?"))
-	assert.Equal(t, []string{}, parseStreamsFromURI(""))
-	assert.Equal(t, []string{"aaa", "bbb"}, parseStreamsFromURI("/?stream=aaa&stream=bbb"))
-	assert.Equal(t, []string{"aaa", "bbb"}, parseStreamsFromURI("/?stream=aaa,bbb"))
-	assert.Equal(t, []string{"aaa", "bbb"}, parseStreamsFromURI("/public/?stream=aaa,bbb"))
-}

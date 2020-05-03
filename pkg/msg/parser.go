@@ -53,6 +53,26 @@ func ParseSlice(t interface{}) ([]interface{}, error) {
 	return s, nil
 }
 
+func ParseSliceOfStrings(t interface{}) ([]string, error) {
+	s, err := ParseSlice(t)
+	if err != nil {
+		return nil, err
+	}
+
+	a := make([]string, len(s))
+
+	for i, istr := range s {
+		str, ok := istr.(string)
+		a[i] = str
+
+		if !ok {
+			return nil, errors.New("expected array of string, got unexpected " + reflect.TypeOf(istr).String())
+		}
+	}
+
+	return a, nil
+}
+
 func Parse(msg []byte) (*Msg, error) {
 	req := Msg{}
 

@@ -3,7 +3,6 @@ package routing
 import (
 	"encoding/json"
 
-	msg "github.com/openware/rango/pkg/message"
 	"github.com/rs/zerolog/log"
 )
 
@@ -17,15 +16,6 @@ func NewTopic(h *Hub) *Topic {
 		clients: make(map[IClient]struct{}),
 		hub:     h,
 	}
-}
-
-func eventMust(method string, data interface{}) []byte {
-	ev, err := msg.PackOutgoingEvent(method, data)
-	if err != nil {
-		log.Panic().Msg(err.Error())
-	}
-
-	return ev
 }
 
 func contains(list []string, el string) bool {
