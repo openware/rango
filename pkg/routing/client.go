@@ -40,7 +40,8 @@ type IClient interface {
 	Send(string)
 	Close()
 	GetUID() string
-	GetSubscriptions() []string
+	GetPublicSubscriptions() []interface{}
+	GetPrivateSubscriptions() []interface{}
 	SubscribePublic(string)
 	SubscribePrivate(string)
 	UnsubscribePublic(string)
@@ -54,8 +55,8 @@ type Client struct {
 	// User ID if authorized
 	UID string
 
-	pubSub  []string
-	privSub []string
+	pubSub  []interface{}
+	privSub []interface{}
 
 	// The websocket connection.
 	conn *websocket.Conn
@@ -76,8 +77,8 @@ func NewClient(hub *Hub, w http.ResponseWriter, r *http.Request) {
 		conn:    conn,
 		send:    make(chan []byte, 256),
 		UID:     r.Header.Get("JwtUID"),
-		pubSub:  []string{},
-		privSub: []string{},
+		pubSub:  []interface{}{},
+		privSub: []interface{}{},
 	}
 
 	if client.UID == "" {
@@ -113,24 +114,28 @@ func (c *Client) GetUID() string {
 	return c.UID
 }
 
-func (c *Client) GetSubscriptions() []string {
-	return append(c.pubSub, c.privSub...)
+func (c *Client) GetPublicSubscriptions() []interface{} {
+	return c.pubSub
+}
+
+func (c *Client) GetPrivateSubscriptions() []interface{} {
+	return c.privSub
 }
 
 func (c *Client) SubscribePublic(s string) {
-	if !contains(c.pubSub, s) {
+	if !msg.Contains(c.pubSub, s) {
 		c.pubSub = append(c.pubSub, s)
 	}
 }
 
 func (c *Client) SubscribePrivate(s string) {
-	if !contains(c.privSub, s) {
+	if !msg.Contains(c.privSub, s) {
 		c.privSub = append(c.privSub, s)
 	}
 }
 
 func (c *Client) UnsubscribePublic(s string) {
-	l := make([]string, len(c.pubSub)-1)
+	l := make([]interface{}, len(c.pubSub)-1)
 	i := 0
 	for _, el := range c.pubSub {
 		if s != el {
@@ -142,7 +147,7 @@ func (c *Client) UnsubscribePublic(s string) {
 }
 
 func (c *Client) UnsubscribePrivate(s string) {
-	l := make([]string, len(c.privSub)-1)
+	l := make([]interface{}, len(c.privSub)-1)
 	i := 0
 	for _, el := range c.privSub {
 		if s != el {

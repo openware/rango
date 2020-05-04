@@ -60,7 +60,6 @@ func ParseSliceOfStrings(t interface{}) ([]string, error) {
 	}
 
 	a := make([]string, len(s))
-
 	for i, istr := range s {
 		str, ok := istr.(string)
 		a[i] = str
@@ -69,7 +68,6 @@ func ParseSliceOfStrings(t interface{}) ([]string, error) {
 			return nil, errors.New("expected array of string, got unexpected " + reflect.TypeOf(istr).String())
 		}
 	}
-
 	return a, nil
 }
 

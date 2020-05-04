@@ -283,9 +283,9 @@ func (h *Hub) handleRequest(req *Request) (resp *msg.Msg) {
 
 	switch req.Method {
 	case "subscribe":
-		err, resp = h.handleSubscribe(req)
+		resp, err = h.handleSubscribe(req)
 	case "unsubscribe":
-		err, resp = h.handleUnsubscribe(req)
+		resp, err = h.handleUnsubscribe(req)
 	default:
 		return msg.NewResponse(req.Msg, "error", []interface{}{"Unknown method " + req.Method})
 	}
@@ -337,73 +337,71 @@ func (h *Hub) handleSubscribePrivate(client IClient, uid string, streams []strin
 	}
 }
 
-func (h *Hub) handleSubscribe(req *Request) (error, *msg.Msg) {
+func (h *Hub) handleSubscribe(req *Request) (*msg.Msg, error) {
 	args := req.Msg.Args
 	if len(args) != 2 {
-		return errors.New("method expects exactly 2 arguments"), nil
+		return nil, errors.New("method expects exactly 2 arguments")
 	}
 
 	scope, err := msg.ParseString(args[0])
 	if err != nil {
-		return errors.New("first argument must be a string"), nil
+		return nil, errors.New("first argument must be a string")
 	}
 
 	streams, err := msg.ParseSliceOfStrings(args[1])
 	if err != nil {
-		return errors.New("second argument must be a list of strings"), nil
+		log.Error().Msgf("in subscribe failed to parse argument: %s", err.Error())
+		return nil, errors.New("second argument must be a list of strings")
 	}
 
 	switch scope {
 	case "public":
 		h.handleSubscribePublic(req.client, streams)
+		return msg.NewResponse(req.Msg, "subscribed", []interface{}{"public", req.client.GetPublicSubscriptions()}), nil
 
 	case "private":
 		uid := req.client.GetUID()
 		if uid != "" {
 			h.handleSubscribePrivate(req.client, uid, streams)
-		} else {
-			return errors.New("unauthorized"), nil
+			return msg.NewResponse(req.Msg, "subscribed", []interface{}{"private", req.client.GetPrivateSubscriptions()}), nil
 		}
+		return nil, errors.New("unauthorized")
 
-	default:
-		return errors.New("Unexpected scope " + scope), nil
 	}
-
-	return nil, msg.NewResponse(req.Msg, "subscribed", msg.Convss2is(req.client.GetSubscriptions()))
+	return nil, errors.New("Unexpected scope " + scope)
 }
 
-func (h *Hub) handleUnsubscribe(req *Request) (error, *msg.Msg) {
+func (h *Hub) handleUnsubscribe(req *Request) (*msg.Msg, error) {
 	args := req.Msg.Args
 	if len(args) != 2 {
-		return errors.New("method expects exactly 2 arguments"), nil
+		return nil, errors.New("method expects exactly 2 arguments")
 	}
 
 	scope, ok := args[0].(string)
 	if !ok {
-		return errors.New("first argument must be a string"), nil
+		return nil, errors.New("first argument must be a string")
 	}
 
-	streams, ok := args[1].([]string)
-	if !ok {
-		return errors.New("second argument must be a list of strings"), nil
+	streams, err := msg.ParseSliceOfStrings(args[1])
+	if err != nil {
+		log.Error().Msgf("in subscribe failed to parse argument: %s", err.Error())
+		return nil, errors.New("second argument must be a list of strings")
 	}
 	switch scope {
 	case "public":
 		h.handleUnsubscribePublic(req.client, streams)
+		return msg.NewResponse(req.Msg, "unsubscribed", []interface{}{"public", req.client.GetPublicSubscriptions()}), nil
 
 	case "private":
 		uid := req.client.GetUID()
 		if uid != "" {
 			h.handleUnsubscribePrivate(req.client, uid, streams)
-		} else {
-			return errors.New("unauthorized"), nil
+			return msg.NewResponse(req.Msg, "unsubscribed", []interface{}{"private", req.client.GetPrivateSubscriptions()}), nil
 		}
+		return nil, errors.New("unauthorized")
 
-	default:
-		return errors.New("Unexpected scope " + scope), nil
 	}
-
-	return nil, msg.NewResponse(req.Msg, "unsubscribed", msg.Convss2is(req.client.GetSubscriptions()))
+	return nil, errors.New("Unexpected scope " + scope)
 }
 
 func (h *Hub) handleUnsubscribePublic(client IClient, streams []string) {

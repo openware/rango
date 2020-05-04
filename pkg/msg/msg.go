@@ -56,3 +56,12 @@ func Convss2is(a []string) []interface{} {
 	}
 	return s
 }
+
+func Contains(haystack []interface{}, niddle interface{}) bool {
+	for _, el := range haystack {
+		if el == niddle {
+			return true
+		}
+	}
+	return false
+}

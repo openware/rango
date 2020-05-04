@@ -25,9 +25,14 @@ func (c *MockedClient) GetUID() string {
 	return args.String(0)
 }
 
-func (c *MockedClient) GetSubscriptions() []string {
+func (c *MockedClient) GetPublicSubscriptions() []interface{} {
 	args := c.Called()
-	return args.Get(0).([]string)
+	return args.Get(0).([]interface{})
+}
+
+func (c *MockedClient) GetPrivateSubscriptions() []interface{} {
+	args := c.Called()
+	return args.Get(0).([]interface{})
 }
 
 func (c *MockedClient) SubscribePublic(s string) {
@@ -46,28 +51,26 @@ func (c *MockedClient) UnsubscribePrivate(s string) {
 	c.Called(s)
 }
 
-func setup(c *MockedClient, streams []interface{}) *Hub {
-	h := NewHub()
-	h.handleSubscribe(&Request{
+func subscribe(h *Hub, c *MockedClient, reqID uint64, args []interface{}) (*msg.Msg, error) {
+	return h.handleSubscribe(&Request{
 		client: c,
 		Msg: &msg.Msg{
 			Type:   msg.Request,
-			ReqID:  41,
+			ReqID:  reqID,
 			Method: "subscribe",
-			Args:   []interface{}{"public", streams},
+			Args:   args,
 		},
 	})
-	return h
 }
 
-func teardown(h *Hub, c *MockedClient, streams []interface{}) {
-	h.handleUnsubscribe(&Request{
+func unsubscribe(h *Hub, c *MockedClient, reqID uint64, args []interface{}) (*msg.Msg, error) {
+	return h.handleUnsubscribe(&Request{
 		client: c,
 		Msg: &msg.Msg{
 			Type:   msg.Request,
-			ReqID:  42,
+			ReqID:  reqID,
 			Method: "unsubscribe",
-			Args:   []interface{}{"public", streams},
+			Args:   args,
 		},
 	})
 }
@@ -75,73 +78,99 @@ func teardown(h *Hub, c *MockedClient, streams []interface{}) {
 func TestAnonymous(t *testing.T) {
 	t.Run("subscribe to a public single stream", func(t *testing.T) {
 		c := &MockedClient{}
+		h := NewHub()
 
-		streams := []interface{}{
-			"eurusd.trades",
-		}
+		streams := []interface{}{"eurusd.trades"}
 
 		c.On("GetUID").Return("")
-		c.On("GetSubscriptions").Return(streams).Once()
+		c.On("GetPublicSubscriptions").Return(streams).Once()
 		c.On("SubscribePublic", streams[0]).Return().Once()
-		c.On("Send", `[1,41,"subscribed",["eurusd.trades"]]`).Return()
 
-		h := setup(c, streams)
+		r, err := subscribe(h, c, 41, []interface{}{"public", streams})
+		assert.NoError(t, err)
+
+		assert.Equal(t, &msg.Msg{
+			Type:   msg.Response,
+			ReqID:  41,
+			Method: "subscribed",
+			Args:   []interface{}{"public", streams},
+		}, r)
+
 		assert.Equal(t, 1, len(h.PublicTopics))
 		assert.Equal(t, 0, len(h.PrivateTopics))
 
 		c.On("UnsubscribePublic", streams[0]).Return()
-		c.On("GetSubscriptions").Return([]string{}).Once()
-		c.On("Send", `[1,42,"unsubscribed",[]]`).Return()
+		c.On("GetPublicSubscriptions").Return([]interface{}{}).Once()
 
-		teardown(h, c, streams)
+		r, err = unsubscribe(h, c, 42, []interface{}{"public", streams})
+		assert.NoError(t, err)
+
+		assert.Equal(t, &msg.Msg{
+			Type:   msg.Response,
+			ReqID:  42,
+			Method: "unsubscribed",
+			Args:   []interface{}{"public", []interface{}{}},
+		}, r)
 		assert.Equal(t, 0, len(h.PublicTopics))
 		assert.Equal(t, 0, len(h.PrivateTopics))
 	})
 
 	t.Run("subscribe to multiple public streams", func(t *testing.T) {
 		c := &MockedClient{}
+		h := NewHub()
 		streams := []interface{}{
 			"eurusd.trades",
 			"eurusd.updates",
 		}
 
 		c.On("GetUID").Return("")
-		c.On("GetSubscriptions").Return(streams).Once()
+		c.On("GetPublicSubscriptions").Return(streams).Once()
 		c.On("SubscribePublic", "eurusd.trades").Return()
 		c.On("SubscribePublic", "eurusd.updates").Return()
-		c.On("Send", `{"success":{"message":"subscribed","streams":["eurusd.trades","eurusd.updates"]}}`).Return()
 
-		h := setup(c, []interface{}{
-			"eurusd.trades",
-			"eurusd.updates",
-		})
+		r, err := subscribe(h, c, 41, []interface{}{"public", streams})
+		assert.NoError(t, err)
+
+		assert.Equal(t, &msg.Msg{
+			Type:   msg.Response,
+			ReqID:  41,
+			Method: "subscribed",
+			Args:   []interface{}{"public", streams},
+		}, r)
 
 		assert.Equal(t, 2, len(h.PublicTopics))
 		assert.Equal(t, 0, len(h.PrivateTopics))
 
 		c.On("UnsubscribePublic", streams[0]).Return().Once()
 		c.On("UnsubscribePublic", streams[1]).Return().Once()
-		c.On("GetSubscriptions").Return([]string{}).Once()
-		c.On("Send", `{"success":{"message":"unsubscribed","streams":[]}}`).Return()
+		c.On("GetPublicSubscriptions").Return([]interface{}{}).Once()
 
-		teardown(h, c, streams)
+		r, err = unsubscribe(h, c, 42, []interface{}{"public", streams})
+		assert.NoError(t, err)
+
+		assert.Equal(t, &msg.Msg{
+			Type:   msg.Response,
+			ReqID:  42,
+			Method: "unsubscribed",
+			Args:   []interface{}{"public", []interface{}{}},
+		}, r)
+
 		assert.Equal(t, 0, len(h.PublicTopics))
 		assert.Equal(t, 0, len(h.PrivateTopics))
 
 	})
 
 	t.Run("subscribe to a private single stream", func(t *testing.T) {
-		c := MockedClient{}
+		c := &MockedClient{}
+		h := NewHub()
 
 		c.On("GetUID").Return("")
-		c.On("GetSubscriptions").Return([]string{})
+		c.On("GetPrivateSubscriptions").Return([]interface{}{})
 		c.On("SubscribePrivate", "trades").Return()
-		c.On("Send", `{"success":{"message":"subscribed","streams":[]}}`).Return()
 
-		h := setup(&c, []interface{}{
-			"trades",
-		})
-
+		r, err := subscribe(h, c, 41, []interface{}{"private", []interface{}{"trades"}})
+		assert.EqualError(t, err, "unauthorized")
+		assert.Nil(t, r)
 		assert.Equal(t, 0, len(h.PublicTopics))
 		assert.Equal(t, 0, len(h.PrivateTopics))
 	})
@@ -149,37 +178,57 @@ func TestAnonymous(t *testing.T) {
 func TestAuthenticated(t *testing.T) {
 	t.Run("subscribe to a private single stream", func(t *testing.T) {
 		c := &MockedClient{}
+		h := NewHub()
 
 		c.On("GetUID").Return("UIDABC00001")
-		c.On("GetSubscriptions").Return([]string{"trades"}).Once()
+		c.On("GetPrivateSubscriptions").Return([]interface{}{"trades"}).Once()
 		c.On("SubscribePrivate", "trades").Return()
-		c.On("Send", `{"success":{"message":"subscribed","streams":["trades"]}}`).Return()
 
-		h := setup(c, []interface{}{
-			"trades",
-		})
+		r, err := subscribe(h, c, 41, []interface{}{"private", []interface{}{"trades"}})
+		assert.NoError(t, err)
+		assert.Equal(t, &msg.Msg{
+			Type:   msg.Response,
+			ReqID:  41,
+			Method: "subscribed",
+			Args:   []interface{}{"private", []interface{}{"trades"}},
+		}, r)
+
 		assert.Equal(t, 0, len(h.PublicTopics))
 		assert.Equal(t, 1, len(h.PrivateTopics))
 
 		c.On("UnsubscribePrivate", "trades").Return().Once()
-		c.On("GetSubscriptions").Return([]string{}).Once()
-		c.On("Send", `{"success":{"message":"unsubscribed","streams":[]}}`).Return()
+		c.On("GetPrivateSubscriptions").Return([]interface{}{}).Once()
 
-		teardown(h, c, []interface{}{"trades"})
+		r, err = unsubscribe(h, c, 42, []interface{}{"private", []interface{}{"trades"}})
+		assert.NoError(t, err)
+		assert.Equal(t, &msg.Msg{
+			Type:   msg.Response,
+			ReqID:  42,
+			Method: "unsubscribed",
+			Args:   []interface{}{"private", []interface{}{}},
+		}, r)
 		assert.Equal(t, 0, len(h.PublicTopics))
 		assert.Equal(t, 0, len(h.PrivateTopics))
 	})
 
 	t.Run("subscribe to multiple private streams", func(t *testing.T) {
 		c := &MockedClient{}
+		h := NewHub()
 
-		c.On("GetSubscriptions").Return([]string{"trades", "orders"}).Once()
+		c.On("GetPrivateSubscriptions").Return([]interface{}{"trades", "orders"}).Once()
 		c.On("GetUID").Return("UIDABC00001")
 		c.On("SubscribePrivate", "trades").Return()
 		c.On("SubscribePrivate", "orders").Return()
-		c.On("Send", `{"success":{"message":"subscribed","streams":["trades","orders"]}}`).Return()
+		c.On("Send", `[1,41,"subscribed",["trades","orders"]]`).Return()
 
-		h := setup(c, []interface{}{"trades", "orders"})
+		r, err := subscribe(h, c, 41, []interface{}{"private", []interface{}{"trades", "orders"}})
+		assert.NoError(t, err)
+		assert.Equal(t, &msg.Msg{
+			Type:   msg.Response,
+			ReqID:  41,
+			Method: "subscribed",
+			Args:   []interface{}{"private", []interface{}{"trades", "orders"}},
+		}, r)
 		assert.Equal(t, 0, len(h.PublicTopics))
 		assert.Equal(t, 1, len(h.PrivateTopics))
 
@@ -189,10 +238,16 @@ func TestAuthenticated(t *testing.T) {
 
 		c.On("UnsubscribePrivate", "trades").Return().Once()
 		c.On("UnsubscribePrivate", "orders").Return().Once()
-		c.On("GetSubscriptions").Return([]string{}).Once()
-		c.On("Send", `{"success":{"message":"unsubscribed","streams":[]}}`).Return()
+		c.On("GetPrivateSubscriptions").Return([]interface{}{}).Once()
 
-		teardown(h, c, []interface{}{"trades", "orders"})
+		r, err = unsubscribe(h, c, 42, []interface{}{"private", []interface{}{"trades", "orders"}})
+		assert.NoError(t, err)
+		assert.Equal(t, &msg.Msg{
+			Type:   msg.Response,
+			ReqID:  42,
+			Method: "unsubscribed",
+			Args:   []interface{}{"private", []interface{}{}},
+		}, r)
 		assert.Equal(t, 0, len(h.PublicTopics))
 		assert.Equal(t, 0, len(h.PrivateTopics))
 
@@ -200,15 +255,35 @@ func TestAuthenticated(t *testing.T) {
 
 	t.Run("subscribe to multiple private and public streams", func(t *testing.T) {
 		c := &MockedClient{}
+		h := NewHub()
 
-		c.On("GetSubscriptions").Return([]string{"trades", "orders", "eurusd.updates"}).Once()
+		c.On("GetPublicSubscriptions").Return([]interface{}{"eurusd.updates"}).Once()
+		c.On("GetPrivateSubscriptions").Return([]interface{}{"trades", "orders"}).Once()
 		c.On("GetUID").Return("UIDABC00001")
 		c.On("SubscribePrivate", "trades").Return()
 		c.On("SubscribePrivate", "orders").Return()
 		c.On("SubscribePublic", "eurusd.updates").Return()
-		c.On("Send", `{"success":{"message":"subscribed","streams":["trades","orders","eurusd.updates"]}}`).Return()
+		c.On("Send", `[1,41,"subscribed",["public",["eurusd.updates"]]]`).Return().Once()
+		c.On("Send", `[1,42,"subscribed",["private",["trades","orders"]]`).Return().Once()
 
-		h := setup(c, []interface{}{"trades", "orders", "eurusd.updates"})
+		r, err := subscribe(h, c, 41, []interface{}{"public", []interface{}{"eurusd.updates"}})
+		assert.NoError(t, err)
+		assert.Equal(t, &msg.Msg{
+			Type:   msg.Response,
+			ReqID:  41,
+			Method: "subscribed",
+			Args:   []interface{}{"public", []interface{}{"eurusd.updates"}},
+		}, r)
+
+		r, err = subscribe(h, c, 42, []interface{}{"private", []interface{}{"trades", "orders"}})
+		assert.NoError(t, err)
+		assert.Equal(t, &msg.Msg{
+			Type:   msg.Response,
+			ReqID:  42,
+			Method: "subscribed",
+			Args:   []interface{}{"private", []interface{}{"trades", "orders"}},
+		}, r)
+
 		assert.Equal(t, 1, len(h.PublicTopics))
 		assert.Equal(t, 1, len(h.PrivateTopics))
 
@@ -219,10 +294,28 @@ func TestAuthenticated(t *testing.T) {
 		c.On("UnsubscribePrivate", "trades").Return().Once()
 		c.On("UnsubscribePrivate", "orders").Return().Once()
 		c.On("UnsubscribePublic", "eurusd.updates").Return().Once()
-		c.On("GetSubscriptions").Return([]string{}).Once()
-		c.On("Send", `{"success":{"message":"unsubscribed","streams":[]}}`).Return()
+		c.On("GetPublicSubscriptions").Return([]interface{}{}).Once()
+		c.On("GetPrivateSubscriptions").Return([]interface{}{}).Once()
+		c.On("Send", `[1,42,"unsubscribed",["public",[]]]`).Return().Once()
+		c.On("Send", `[1,42,"unsubscribed",["private",[]]]`).Return().Once()
 
-		teardown(h, c, []interface{}{"trades", "orders", "eurusd.updates"})
+		r, err = unsubscribe(h, c, 43, []interface{}{"public", []interface{}{"eurusd.updates"}})
+		assert.NoError(t, err)
+		assert.Equal(t, &msg.Msg{
+			Type:   msg.Response,
+			ReqID:  43,
+			Method: "unsubscribed",
+			Args:   []interface{}{"public", []interface{}{}},
+		}, r)
+
+		r, err = unsubscribe(h, c, 44, []interface{}{"private", []interface{}{"trades", "orders"}})
+		assert.NoError(t, err)
+		assert.Equal(t, &msg.Msg{
+			Type:   msg.Response,
+			ReqID:  44,
+			Method: "unsubscribed",
+			Args:   []interface{}{"private", []interface{}{}},
+		}, r)
 		assert.Equal(t, 0, len(h.PublicTopics))
 		assert.Equal(t, 0, len(h.PrivateTopics))
 	})
