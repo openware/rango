@@ -14,5 +14,5 @@ func TestEncoding(t *testing.T) {
 		Args:   []interface{}{"hello", "there"},
 	}
 
-	assert.Equal(t, `[0,42,"test",["hello","there"]]`, string(msg.Encode()))
+	assert.Equal(t, `[1,42,"test",["hello","there"]]`, string(msg.Encode()))
 }

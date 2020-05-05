@@ -6,14 +6,16 @@ import (
 	"github.com/rs/zerolog/log"
 )
 
-// Request identifier
-const Request = 0
+const (
+	// Request type code
+	Request = 1
 
-// Response identifier
-const Response = 1
+	// Response type code
+	Response = 2
 
-// Event identifier
-const Event = 2
+	// Event type code
+	Event = 3
+)
 
 // Msg represent websocket messages, it could be either a request, a response or an event
 type Msg struct {

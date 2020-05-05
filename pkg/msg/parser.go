@@ -88,7 +88,7 @@ func Parse(msg []byte) (*Msg, error) {
 		return nil, fmt.Errorf("failed to parse type: %w", err)
 	}
 	if t != Request && t != Response && t != Event {
-		return nil, errors.New("message type must be 0, 1 or 2")
+		return nil, errors.New("message type must be 1, 2 or 3")
 	}
 
 	reqID, err := ParseUint64(v[1])
