@@ -8,6 +8,7 @@ import (
 
 	"github.com/gorilla/websocket"
 	msg "github.com/openware/rango/pkg/message"
+	"github.com/openware/rango/pkg/metrics"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 )
@@ -36,6 +37,7 @@ var upgrader = websocket.Upgrader{
 	WriteBufferSize: 1024,
 }
 
+// FIXME: IClient looks very wrong.
 type IClient interface {
 	Send(string)
 	Close()
@@ -61,8 +63,7 @@ type Client struct {
 	conn *websocket.Conn
 
 	// Buffered channel of outbound messages.
-	send   chan []byte
-	closed bool
+	send chan []byte
 }
 
 // NewClient handles websocket requests from the peer.
@@ -76,7 +77,6 @@ func NewClient(hub *Hub, w http.ResponseWriter, r *http.Request) {
 		hub:     hub,
 		conn:    conn,
 		send:    make(chan []byte, 256),
-		closed:  false,
 		UID:     r.Header.Get("JwtUID"),
 		pubSub:  []string{},
 		privSub: []string{},
@@ -95,6 +95,8 @@ func NewClient(hub *Hub, w http.ResponseWriter, r *http.Request) {
 		},
 	})
 
+	metrics.RecordHubClientNew()
+
 	// Allow collection of memory referenced by the caller by doing all work in
 	// new goroutines.
 	go client.write()
@@ -102,13 +104,10 @@ func NewClient(hub *Hub, w http.ResponseWriter, r *http.Request) {
 }
 
 func (c *Client) Send(s string) {
-	if !c.closed {
-		c.send <- []byte(s)
-	}
+	c.send <- []byte(s)
 }
 
 func (c *Client) Close() {
-	c.closed = true
 	close(c.send)
 }
 
@@ -183,12 +182,14 @@ func (c *Client) read() {
 		c.hub.Unregister <- c
 		c.conn.Close()
 	}()
+
 	c.conn.SetReadLimit(maxMessageSize)
 	c.conn.SetReadDeadline(time.Now().Add(pongWait))
 	c.conn.SetPongHandler(func(string) error {
 		c.conn.SetReadDeadline(time.Now().Add(pongWait))
 		return nil
 	})
+
 	for {
 		_, message, err := c.conn.ReadMessage()
 		if err != nil {
@@ -224,7 +225,9 @@ func (c *Client) write() {
 	defer func() {
 		ticker.Stop()
 		c.conn.Close()
+		metrics.RecordHubClientClose()
 	}()
+
 	for {
 		select {
 		case message, ok := <-c.send:
