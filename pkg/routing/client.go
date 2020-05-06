@@ -9,7 +9,6 @@ import (
 	"github.com/gorilla/websocket"
 	msg "github.com/openware/rango/pkg/message"
 	"github.com/openware/rango/pkg/metrics"
-	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 )
 
@@ -202,9 +201,16 @@ func (c *Client) read() {
 		if len(message) == 0 {
 			continue
 		}
-		if log.Logger.GetLevel() <= zerolog.DebugLevel {
+		if isDebug() {
 			log.Debug().Msgf("Received message %s", message)
 		}
+
+		// handle ping
+		if string(message) == "ping" {
+			c.send <- []byte("pong")
+			continue
+		}
+
 		req, err := msg.ParseRequest(message)
 		if err != nil {
 			c.send <- []byte(responseMust(err, nil))

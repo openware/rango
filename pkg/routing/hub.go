@@ -68,6 +68,14 @@ func isSnapshotObject(s string) bool {
 	return strings.HasSuffix(s, "-snap")
 }
 
+func isDebug() bool {
+	return log.Logger.GetLevel() <= zerolog.DebugLevel
+}
+
+func isTrace() bool {
+	return log.Logger.GetLevel() <= zerolog.TraceLevel
+}
+
 func getTopic(scope, stream, typ string) string {
 	if isSnapshotObject(typ) {
 		typ = strings.Replace(typ, "-snap", "-inc", 1)
@@ -95,7 +103,7 @@ func (h *Hub) ListenWebsocketEvents() {
 func (h *Hub) ListenAMQP(q <-chan amqp.Delivery) {
 	for {
 		delivery := <-q
-		if log.Logger.GetLevel() <= zerolog.TraceLevel {
+		if isTrace() {
 			log.Trace().Msgf("AMQP msg received: %s -> %s", delivery.RoutingKey, delivery.Body)
 		}
 		s := strings.Split(delivery.RoutingKey, ".")
@@ -177,7 +185,9 @@ func (h *Hub) handleIncrement(msg *Event) (string, error) {
 }
 
 func (h *Hub) routeMessage(msg *Event) {
-	log.Debug().Msgf("Routing message %v", msg)
+	if isTrace() {
+		log.Trace().Msgf("Routing message %v", msg)
+	}
 
 	switch msg.Scope {
 	case "public", "global":
@@ -206,9 +216,9 @@ func (h *Hub) routeMessage(msg *Event) {
 		if ok {
 			topic.broadcast(msg)
 		} else {
-			if log.Logger.GetLevel() <= zerolog.DebugLevel {
-				log.Debug().Msgf("No public registration to %s", msg.Topic)
-				log.Debug().Msgf("Public topics: %v", h.PublicTopics)
+			if isTrace() {
+				log.Trace().Msgf("No public registration to %s", msg.Topic)
+				log.Trace().Msgf("Public topics: %v", h.PublicTopics)
 			}
 		}
 
@@ -222,9 +232,9 @@ func (h *Hub) routeMessage(msg *Event) {
 				break
 			}
 		}
-		if log.Logger.GetLevel() <= zerolog.DebugLevel {
-			log.Debug().Msgf("No private registration to %s", msg.Topic)
-			log.Debug().Msgf("Public topics: %v", h.PrivateTopics)
+		if isTrace() {
+			log.Trace().Msgf("No private registration to %s", msg.Topic)
+			log.Trace().Msgf("Private topics: %v", h.PrivateTopics)
 		}
 
 	default:

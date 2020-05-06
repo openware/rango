@@ -2,7 +2,6 @@ package message
 
 import (
 	"encoding/json"
-	"fmt"
 )
 
 type Request struct {
@@ -13,7 +12,6 @@ type Request struct {
 func PackOutgoingResponse(err error, message interface{}) ([]byte, error) {
 	res := make(map[string]interface{}, 1)
 	if err != nil {
-		fmt.Println(err)
 		res["error"] = err.Error()
 	} else {
 		res["success"] = message
