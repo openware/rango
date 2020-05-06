@@ -304,8 +304,11 @@ func (h *Hub) handleSubscribePublic(client IClient, streams []string) {
 			h.PublicTopics[t] = topic
 		}
 
-		topic.subscribe(client)
-		client.SubscribePublic(t)
+		if topic.subscribe(client) {
+			client.SubscribePublic(t)
+			metrics.RecordHubSubscription("public", t)
+		}
+
 		if isIncrementObject(t) {
 			o, ok := h.IncrementalObjects[t]
 			if ok && o.Snapshot != "" {
@@ -332,8 +335,10 @@ func (h *Hub) handleSubscribePrivate(client IClient, uid string, streams []strin
 			uTopics[t] = topic
 		}
 
-		topic.subscribe(client)
-		client.SubscribePrivate(t)
+		if topic.subscribe(client) {
+			client.SubscribePrivate(t)
+			metrics.RecordHubSubscription("private", t)
+		}
 	}
 }
 

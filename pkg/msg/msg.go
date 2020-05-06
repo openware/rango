@@ -2,8 +2,6 @@ package msg
 
 import (
 	"encoding/json"
-
-	"github.com/rs/zerolog/log"
 )
 
 const (
@@ -44,7 +42,6 @@ func (m *Msg) Encode() []byte {
 		m.Args,
 	})
 	if err != nil {
-		log.Error().Msgf("Fail to encode Msg %v, %s", m, err.Error())
 		return []byte{}
 	}
 	return s

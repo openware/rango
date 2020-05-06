@@ -87,13 +87,6 @@ func NewClient(hub *Hub, w http.ResponseWriter, r *http.Request) {
 		log.Info().Msgf("New authenticated connection: %s", client.UID)
 	}
 
-	hub.handleSubscribe(&Request{
-		client: client,
-		Request: msg.Request{
-			Streams: parseStreamsFromURI(r.RequestURI),
-		},
-	})
-
 	metrics.RecordHubClientNew()
 
 	// Allow collection of memory referenced by the caller by doing all work in
