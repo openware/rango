@@ -62,13 +62,18 @@ func (t *Topic) broadcastRaw(topic, msgBody string) {
 	}
 }
 
-func (t *Topic) subscribe(c IClient) {
+func (t *Topic) subscribe(c IClient) bool {
 	if _, ok := t.clients[c]; ok {
-		return
+		return false
 	}
 	t.clients[c] = struct{}{}
+
+	return true
 }
 
-func (t *Topic) unsubscribe(c IClient) {
+func (t *Topic) unsubscribe(c IClient) bool {
+	_, ok := t.clients[c]
 	delete(t.clients, c)
+
+	return ok
 }

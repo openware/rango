@@ -11,10 +11,12 @@ import (
 
 	"math/rand"
 
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 
 	"github.com/openware/rango/pkg/auth"
+	"github.com/openware/rango/pkg/metrics"
 	"github.com/openware/rango/pkg/routing"
 	"github.com/openware/rango/pkg/upstream"
 )
@@ -123,7 +125,11 @@ func getServerAddress() string {
 
 func main() {
 	flag.Parse()
+
 	setupLogger()
+
+	metrics.Enable()
+
 	hub := routing.NewHub()
 	pub, err := getPublicKey()
 	if err != nil {
@@ -151,6 +157,8 @@ func main() {
 	http.HandleFunc("/private", authHandler(wsHandler, pub, true))
 	http.HandleFunc("/public", authHandler(wsHandler, pub, false))
 	http.HandleFunc("/", authHandler(wsHandler, pub, false))
+
+	go http.ListenAndServe(":4242", promhttp.Handler())
 
 	log.Printf("Listenning on %s", getServerAddress())
 	err = http.ListenAndServe(getServerAddress(), nil)

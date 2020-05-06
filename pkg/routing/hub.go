@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	msg "github.com/openware/rango/pkg/message"
+	"github.com/openware/rango/pkg/metrics"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 	"github.com/streadway/amqp"
@@ -67,6 +68,14 @@ func isSnapshotObject(s string) bool {
 	return strings.HasSuffix(s, "-snap")
 }
 
+func isDebug() bool {
+	return log.Logger.GetLevel() <= zerolog.DebugLevel
+}
+
+func isTrace() bool {
+	return log.Logger.GetLevel() <= zerolog.TraceLevel
+}
+
 func getTopic(scope, stream, typ string) string {
 	if isSnapshotObject(typ) {
 		typ = strings.Replace(typ, "-snap", "-inc", 1)
@@ -94,7 +103,7 @@ func (h *Hub) ListenWebsocketEvents() {
 func (h *Hub) ListenAMQP(q <-chan amqp.Delivery) {
 	for {
 		delivery := <-q
-		if log.Logger.GetLevel() <= zerolog.TraceLevel {
+		if isTrace() {
 			log.Trace().Msgf("AMQP msg received: %s -> %s", delivery.RoutingKey, delivery.Body)
 		}
 		s := strings.Split(delivery.RoutingKey, ".")
@@ -176,8 +185,9 @@ func (h *Hub) handleIncrement(msg *Event) (string, error) {
 }
 
 func (h *Hub) routeMessage(msg *Event) {
-	
-	log.Debug().Msgf("Routing message %v", msg)
+	if isTrace() {
+		log.Trace().Msgf("Routing message %v", msg)
+	}
 
 	switch msg.Scope {
 	case "public", "global":
@@ -206,9 +216,9 @@ func (h *Hub) routeMessage(msg *Event) {
 		if ok {
 			topic.broadcast(msg)
 		} else {
-			if log.Logger.GetLevel() <= zerolog.DebugLevel {
-				log.Debug().Msgf("No public registration to %s", msg.Topic)
-				log.Debug().Msgf("Public topics: %v", h.PublicTopics)
+			if isTrace() {
+				log.Trace().Msgf("No public registration to %s", msg.Topic)
+				log.Trace().Msgf("Public topics: %v", h.PublicTopics)
 			}
 		}
 
@@ -222,9 +232,9 @@ func (h *Hub) routeMessage(msg *Event) {
 				break
 			}
 		}
-		if log.Logger.GetLevel() <= zerolog.DebugLevel {
-			log.Debug().Msgf("No private registration to %s", msg.Topic)
-			log.Debug().Msgf("Public topics: %v", h.PrivateTopics)
+		if isTrace() {
+			log.Trace().Msgf("No private registration to %s", msg.Topic)
+			log.Trace().Msgf("Private topics: %v", h.PrivateTopics)
 		}
 
 	default:
@@ -234,8 +244,32 @@ func (h *Hub) routeMessage(msg *Event) {
 }
 
 func (h *Hub) unsubscribeAll(client IClient) {
-	for _, topic := range h.PublicTopics {
-		topic.unsubscribe(client)
+	for t, topic := range h.PublicTopics {
+		if topic.unsubscribe(client) {
+			metrics.RecordHubUnsubscription("public", t)
+		}
+		if topic.len() == 0 {
+			delete(h.PublicTopics, t)
+		}
+	}
+
+	uid := client.GetUID()
+	topics, ok := h.PrivateTopics[uid]
+	if !ok {
+		return
+	}
+
+	for t, topic := range topics {
+		if topic.unsubscribe(client) {
+			metrics.RecordHubUnsubscription("private", t)
+		}
+		if topic.len() == 0 {
+			delete(topics, t)
+		}
+	}
+
+	if len(topics) == 0 {
+		delete(h.PrivateTopics, uid)
 	}
 }
 
@@ -285,8 +319,10 @@ func (h *Hub) handleSubscribe(req *Request) {
 				uTopics[t] = topic
 			}
 
-			topic.subscribe(req.client)
-			req.client.SubscribePrivate(t)
+			if topic.subscribe(req.client) {
+				metrics.RecordHubSubscription("private", t)
+				req.client.SubscribePrivate(t)
+			}
 		} else {
 			topic, ok := h.PublicTopics[t]
 			if !ok {
@@ -294,8 +330,11 @@ func (h *Hub) handleSubscribe(req *Request) {
 				h.PublicTopics[t] = topic
 			}
 
-			topic.subscribe(req.client)
-			req.client.SubscribePublic(t)
+			if topic.subscribe(req.client) {
+				metrics.RecordHubSubscription("public", t)
+				req.client.SubscribePublic(t)
+			}
+
 			if isIncrementObject(t) {
 				o, ok := h.IncrementalObjects[t]
 				if ok && o.Snapshot != "" {
@@ -307,8 +346,6 @@ func (h *Hub) handleSubscribe(req *Request) {
 			}
 		}
 	}
-
-	log.Debug().Msgf("Public topics: %v", h.PublicTopics)
 
 	req.client.Send(responseMust(nil, map[string]interface{}{
 		"message": "subscribed",
@@ -328,13 +365,16 @@ func (h *Hub) handleUnsubscribe(req *Request) {
 				continue
 			}
 
-			topic := uTopics[t]
+			topic, ok := uTopics[t]
 			if ok {
-				topic.unsubscribe(req.client)
+				if topic.unsubscribe(req.client) {
+					metrics.RecordHubUnsubscription("private", t)
+					req.client.UnsubscribePrivate(t)
+				}
+
 				if topic.len() == 0 {
 					delete(uTopics, t)
 				}
-				req.client.UnsubscribePrivate(t)
 			}
 
 			uTopics, ok = h.PrivateTopics[uid]
@@ -345,11 +385,14 @@ func (h *Hub) handleUnsubscribe(req *Request) {
 		} else {
 			topic, ok := h.PublicTopics[t]
 			if ok {
-				topic.unsubscribe(req.client)
+				if topic.unsubscribe(req.client) {
+					metrics.RecordHubUnsubscription("public", t)
+					req.client.UnsubscribePublic(t)
+				}
+
 				if topic.len() == 0 {
 					delete(h.PublicTopics, t)
 				}
-				req.client.UnsubscribePublic(t)
 			}
 		}
 	}
