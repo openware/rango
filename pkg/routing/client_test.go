@@ -12,58 +12,51 @@ func TestClient(t *testing.T) {
 		hub:     hub,
 		send:    make(chan []byte, 256),
 		UID:     "UIDABC001",
-		pubSub:  []string{},
-		privSub: []string{},
+		pubSub:  []interface{}{},
+		privSub: []interface{}{},
 	}
 
 	assert.Equal(t, "UIDABC001", client.GetUID())
-	assert.Equal(t, []string{}, client.GetSubscriptions())
+	assert.Equal(t, []interface{}{}, client.GetPublicSubscriptions())
+	assert.Equal(t, []interface{}{}, client.GetPrivateSubscriptions())
 
 	client.SubscribePublic("a.x")
-	assert.Equal(t, []string{"a.x"}, client.GetSubscriptions())
-	assert.Equal(t, []string{"a.x"}, client.pubSub)
-	assert.Equal(t, []string{}, client.privSub)
+	assert.Equal(t, []interface{}{"a.x"}, client.GetPublicSubscriptions())
+	assert.Equal(t, []interface{}{"a.x"}, client.pubSub)
+	assert.Equal(t, []interface{}{}, client.privSub)
 
 	client.SubscribePublic("a.y")
-	assert.Equal(t, []string{"a.x", "a.y"}, client.GetSubscriptions())
-	assert.Equal(t, []string{"a.x", "a.y"}, client.pubSub)
-	assert.Equal(t, []string{}, client.privSub)
+	assert.Equal(t, []interface{}{"a.x", "a.y"}, client.GetPublicSubscriptions())
+	assert.Equal(t, []interface{}{"a.x", "a.y"}, client.pubSub)
+	assert.Equal(t, []interface{}{}, client.privSub)
 
 	client.UnsubscribePublic("a.y")
-	assert.Equal(t, []string{"a.x"}, client.GetSubscriptions())
-	assert.Equal(t, []string{"a.x"}, client.pubSub)
-	assert.Equal(t, []string{}, client.privSub)
+	assert.Equal(t, []interface{}{"a.x"}, client.GetPublicSubscriptions())
+	assert.Equal(t, []interface{}{"a.x"}, client.pubSub)
+	assert.Equal(t, []interface{}{}, client.privSub)
 
 	client.SubscribePrivate("b")
-	assert.Equal(t, []string{"a.x", "b"}, client.GetSubscriptions())
-	assert.Equal(t, []string{"a.x"}, client.pubSub)
-	assert.Equal(t, []string{"b"}, client.privSub)
+	assert.Equal(t, []interface{}{"b"}, client.GetPrivateSubscriptions())
+	assert.Equal(t, []interface{}{"a.x"}, client.pubSub)
+	assert.Equal(t, []interface{}{"b"}, client.privSub)
 
 	client.SubscribePrivate("c")
-	assert.Equal(t, []string{"a.x", "b", "c"}, client.GetSubscriptions())
-	assert.Equal(t, []string{"a.x"}, client.pubSub)
-	assert.Equal(t, []string{"b", "c"}, client.privSub)
+	assert.Equal(t, []interface{}{"b", "c"}, client.GetPrivateSubscriptions())
+	assert.Equal(t, []interface{}{"a.x"}, client.pubSub)
+	assert.Equal(t, []interface{}{"b", "c"}, client.privSub)
 
 	client.UnsubscribePrivate("b")
-	assert.Equal(t, []string{"a.x", "c"}, client.GetSubscriptions())
-	assert.Equal(t, []string{"a.x"}, client.pubSub)
-	assert.Equal(t, []string{"c"}, client.privSub)
+	assert.Equal(t, []interface{}{"c"}, client.GetPrivateSubscriptions())
+	assert.Equal(t, []interface{}{"a.x"}, client.pubSub)
+	assert.Equal(t, []interface{}{"c"}, client.privSub)
 
 	client.UnsubscribePrivate("c")
-	assert.Equal(t, []string{"a.x"}, client.GetSubscriptions())
-	assert.Equal(t, []string{"a.x"}, client.pubSub)
-	assert.Equal(t, []string{}, client.privSub)
+	assert.Equal(t, []interface{}{}, client.GetPrivateSubscriptions())
+	assert.Equal(t, []interface{}{"a.x"}, client.pubSub)
+	assert.Equal(t, []interface{}{}, client.privSub)
 
 	client.UnsubscribePublic("a.x")
-	assert.Equal(t, []string{}, client.GetSubscriptions())
-	assert.Equal(t, []string{}, client.pubSub)
-	assert.Equal(t, []string{}, client.privSub)
-}
-
-func TestParseStreamsFromURI(t *testing.T) {
-	assert.Equal(t, []string{}, parseStreamsFromURI("/?"))
-	assert.Equal(t, []string{}, parseStreamsFromURI(""))
-	assert.Equal(t, []string{"aaa", "bbb"}, parseStreamsFromURI("/?stream=aaa&stream=bbb"))
-	assert.Equal(t, []string{"aaa", "bbb"}, parseStreamsFromURI("/?stream=aaa,bbb"))
-	assert.Equal(t, []string{"aaa", "bbb"}, parseStreamsFromURI("/public/?stream=aaa,bbb"))
+	assert.Equal(t, []interface{}{}, client.GetPublicSubscriptions())
+	assert.Equal(t, []interface{}{}, client.pubSub)
+	assert.Equal(t, []interface{}{}, client.privSub)
 }

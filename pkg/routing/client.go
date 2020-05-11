@@ -3,12 +3,11 @@ package routing
 import (
 	"bytes"
 	"net/http"
-	"strings"
 	"time"
 
 	"github.com/gorilla/websocket"
-	msg "github.com/openware/rango/pkg/message"
 	"github.com/openware/rango/pkg/metrics"
+	"github.com/openware/rango/pkg/msg"
 	"github.com/rs/zerolog/log"
 )
 
@@ -41,7 +40,8 @@ type IClient interface {
 	Send(string)
 	Close()
 	GetUID() string
-	GetSubscriptions() []string
+	GetPublicSubscriptions() []interface{}
+	GetPrivateSubscriptions() []interface{}
 	SubscribePublic(string)
 	SubscribePrivate(string)
 	UnsubscribePublic(string)
@@ -55,8 +55,8 @@ type Client struct {
 	// User ID if authorized
 	UID string
 
-	pubSub  []string
-	privSub []string
+	pubSub  []interface{}
+	privSub []interface{}
 
 	// The websocket connection.
 	conn *websocket.Conn
@@ -77,8 +77,8 @@ func NewClient(hub *Hub, w http.ResponseWriter, r *http.Request) {
 		conn:    conn,
 		send:    make(chan []byte, 256),
 		UID:     r.Header.Get("JwtUID"),
-		pubSub:  []string{},
-		privSub: []string{},
+		pubSub:  []interface{}{},
+		privSub: []interface{}{},
 	}
 
 	if client.UID == "" {
@@ -86,13 +86,6 @@ func NewClient(hub *Hub, w http.ResponseWriter, r *http.Request) {
 	} else {
 		log.Info().Msgf("New authenticated connection: %s", client.UID)
 	}
-
-	hub.handleSubscribe(&Request{
-		client: client,
-		Request: msg.Request{
-			Streams: parseStreamsFromURI(r.RequestURI),
-		},
-	})
 
 	metrics.RecordHubClientNew()
 
@@ -114,24 +107,28 @@ func (c *Client) GetUID() string {
 	return c.UID
 }
 
-func (c *Client) GetSubscriptions() []string {
-	return append(c.pubSub, c.privSub...)
+func (c *Client) GetPublicSubscriptions() []interface{} {
+	return c.pubSub
+}
+
+func (c *Client) GetPrivateSubscriptions() []interface{} {
+	return c.privSub
 }
 
 func (c *Client) SubscribePublic(s string) {
-	if !contains(c.pubSub, s) {
+	if !msg.Contains(c.pubSub, s) {
 		c.pubSub = append(c.pubSub, s)
 	}
 }
 
 func (c *Client) SubscribePrivate(s string) {
-	if !contains(c.privSub, s) {
+	if !msg.Contains(c.privSub, s) {
 		c.privSub = append(c.privSub, s)
 	}
 }
 
 func (c *Client) UnsubscribePublic(s string) {
-	l := make([]string, len(c.pubSub)-1)
+	l := make([]interface{}, len(c.pubSub)-1)
 	i := 0
 	for _, el := range c.pubSub {
 		if s != el {
@@ -143,7 +140,7 @@ func (c *Client) UnsubscribePublic(s string) {
 }
 
 func (c *Client) UnsubscribePrivate(s string) {
-	l := make([]string, len(c.privSub)-1)
+	l := make([]interface{}, len(c.privSub)-1)
 	i := 0
 	for _, el := range c.privSub {
 		if s != el {
@@ -152,23 +149,6 @@ func (c *Client) UnsubscribePrivate(s string) {
 		}
 	}
 	c.privSub = l
-}
-
-func parseStreamsFromURI(uri string) []string {
-	streams := make([]string, 0)
-	path := strings.Split(uri, "?")
-	if len(path) != 2 {
-		return streams
-	}
-	for _, up := range strings.Split(path[1], "&") {
-		p := strings.Split(up, "=")
-		if len(p) != 2 || p[0] != "stream" {
-			continue
-		}
-		streams = append(streams, strings.Split(p[1], ",")...)
-
-	}
-	return streams
 }
 
 // read pumps messages from the websocket connection to the hub.
@@ -211,12 +191,14 @@ func (c *Client) read() {
 			continue
 		}
 
-		req, err := msg.ParseRequest(message)
+		req, err := msg.Parse(message)
 		if err != nil {
-			c.send <- []byte(responseMust(err, nil))
+			log.Error().Msgf("fail to parse message: %s", err.Error())
+			c.send <- msg.NewResponse(&msg.Msg{ReqID: 0}, "error", []interface{}{err.Error()}).Encode()
 			continue
 		}
 
+		log.Debug().Msgf("Pushing request to hub: %v", req)
 		c.hub.Requests <- Request{c, req}
 	}
 }
@@ -249,6 +231,14 @@ func (c *Client) write() {
 				return
 			}
 			w.Write(message)
+
+			// Add queued chat messages to the current websocket message.
+			n := len(c.send)
+			for i := 0; i < n; i++ {
+				w.Write(newline)
+				w.Write(<-c.send)
+			}
+
 			if err := w.Close(); err != nil {
 				return
 			}

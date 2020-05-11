@@ -6,17 +6,12 @@ import (
 	"fmt"
 	"strings"
 
-	msg "github.com/openware/rango/pkg/message"
 	"github.com/openware/rango/pkg/metrics"
+	"github.com/openware/rango/pkg/msg"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 	"github.com/streadway/amqp"
 )
-
-type Request struct {
-	client IClient
-	msg.Request
-}
 
 // Hub maintains the set of active clients and broadcasts messages to the
 // clients.
@@ -37,6 +32,13 @@ type Hub struct {
 	IncrementalObjects map[string]*IncrementalObject
 }
 
+// Request is a container for client message and pointer to the client
+type Request struct {
+	client IClient
+	*msg.Msg
+}
+
+// Event contains an event received through AMQP
 type Event struct {
 	Scope  string      // global, public, private
 	Stream string      // channel routing key
@@ -45,11 +47,13 @@ type Event struct {
 	Body   interface{} // event json body
 }
 
+// IncrementalObject stores an incremental object built from a snapshot and increments
 type IncrementalObject struct {
 	Snapshot   string
 	Increments []string
 }
 
+// NewHub creates a Hub
 func NewHub() *Hub {
 	return &Hub{
 		Requests:           make(chan Request),
@@ -90,7 +94,8 @@ func (h *Hub) ListenWebsocketEvents() {
 	for {
 		select {
 		case req := <-h.Requests:
-			h.handleRequest(&req)
+			resp := h.handleRequest(&req)
+			req.client.Send(string(resp.Encode()))
 
 		case client := <-h.Unregister:
 			log.Info().Msgf("Unregistering client %s", client.GetUID())
@@ -273,132 +278,172 @@ func (h *Hub) unsubscribeAll(client IClient) {
 	}
 }
 
-func responseMust(e error, r interface{}) string {
-	res, err := msg.PackOutgoingResponse(e, r)
-	if err != nil {
-		log.Panic().Msg("responseMust failed:" + err.Error())
-		panic(err.Error())
-	}
+func (h *Hub) handleRequest(req *Request) (resp *msg.Msg) {
+	var err error
 
-	return string(res)
-}
-
-func isPrivateStream(s string) bool {
-	return strings.Count(s, ".") == 0
-}
-
-func (h *Hub) handleRequest(req *Request) {
 	switch req.Method {
 	case "subscribe":
-		h.handleSubscribe(req)
+		resp, err = h.handleSubscribe(req)
 	case "unsubscribe":
-		h.handleUnsubscribe(req)
+		resp, err = h.handleUnsubscribe(req)
 	default:
-		req.client.Send(responseMust(errors.New("unsupported method"), nil))
+		return msg.NewResponse(req.Msg, "error", []interface{}{"Unknown method " + req.Method})
 	}
+
+	if err != nil {
+		return msg.NewResponse(req.Msg, "error", []interface{}{err.Error()})
+	}
+	return resp
 }
 
-func (h *Hub) handleSubscribe(req *Request) {
-	for _, t := range req.Streams {
-		if isPrivateStream(t) {
-			uid := req.client.GetUID()
-			if uid == "" {
-				log.Error().Msgf("Anonymous user tried to subscribe to private stream %s", t)
-				continue
-			}
+func (h *Hub) handleSubscribePublic(client IClient, streams []string) {
+	for _, t := range streams {
+		topic, ok := h.PublicTopics[t]
+		if !ok {
+			topic = NewTopic(h)
+			h.PublicTopics[t] = topic
+		}
 
-			uTopics, ok := h.PrivateTopics[uid]
-			if !ok {
-				uTopics = make(map[string]*Topic, 3)
-				h.PrivateTopics[uid] = uTopics
-			}
+		if topic.subscribe(client) {
+			client.SubscribePublic(t)
+			metrics.RecordHubSubscription("public", t)
+		}
 
-			topic, ok := uTopics[t]
-			if !ok {
-				topic = NewTopic(h)
-				uTopics[t] = topic
-			}
-
-			if topic.subscribe(req.client) {
-				metrics.RecordHubSubscription("private", t)
-				req.client.SubscribePrivate(t)
-			}
-		} else {
-			topic, ok := h.PublicTopics[t]
-			if !ok {
-				topic = NewTopic(h)
-				h.PublicTopics[t] = topic
-			}
-
-			if topic.subscribe(req.client) {
-				metrics.RecordHubSubscription("public", t)
-				req.client.SubscribePublic(t)
-			}
-
-			if isIncrementObject(t) {
-				o, ok := h.IncrementalObjects[t]
-				if ok && o.Snapshot != "" {
-					req.client.Send(o.Snapshot)
-					for _, inc := range o.Increments {
-						req.client.Send(inc)
-					}
+		if isIncrementObject(t) {
+			o, ok := h.IncrementalObjects[t]
+			if ok && o.Snapshot != "" {
+				client.Send(o.Snapshot)
+				for _, inc := range o.Increments {
+					client.Send(inc)
 				}
 			}
 		}
 	}
-
-	req.client.Send(responseMust(nil, map[string]interface{}{
-		"message": "subscribed",
-		"streams": req.client.GetSubscriptions(),
-	}))
 }
 
-func (h *Hub) handleUnsubscribe(req *Request) {
-	for _, t := range req.Streams {
-		if isPrivateStream(t) {
-			uid := req.client.GetUID()
-			if uid == "" {
-				continue
+func (h *Hub) handleSubscribePrivate(client IClient, uid string, streams []string) {
+	for _, t := range streams {
+		uTopics, ok := h.PrivateTopics[uid]
+		if !ok {
+			uTopics = make(map[string]*Topic, 3)
+			h.PrivateTopics[uid] = uTopics
+		}
+
+		topic, ok := uTopics[t]
+		if !ok {
+			topic = NewTopic(h)
+			uTopics[t] = topic
+		}
+
+		if topic.subscribe(client) {
+			client.SubscribePrivate(t)
+			metrics.RecordHubSubscription("private", t)
+		}
+	}
+}
+
+func (h *Hub) handleSubscribe(req *Request) (*msg.Msg, error) {
+	args := req.Msg.Args
+	if len(args) != 2 {
+		return nil, errors.New("method expects exactly 2 arguments")
+	}
+
+	scope, err := msg.ParseString(args[0])
+	if err != nil {
+		return nil, errors.New("first argument must be a string")
+	}
+
+	streams, err := msg.ParseSliceOfStrings(args[1])
+	if err != nil {
+		log.Error().Msgf("in subscribe failed to parse argument: %s", err.Error())
+		return nil, errors.New("second argument must be a list of strings")
+	}
+
+	switch scope {
+	case "public":
+		h.handleSubscribePublic(req.client, streams)
+		return msg.NewResponse(req.Msg, "subscribed", []interface{}{"public", req.client.GetPublicSubscriptions()}), nil
+
+	case "private":
+		uid := req.client.GetUID()
+		if uid != "" {
+			h.handleSubscribePrivate(req.client, uid, streams)
+			return msg.NewResponse(req.Msg, "subscribed", []interface{}{"private", req.client.GetPrivateSubscriptions()}), nil
+		}
+		return nil, errors.New("unauthorized")
+
+	}
+	return nil, errors.New("Unexpected scope " + scope)
+}
+
+func (h *Hub) handleUnsubscribe(req *Request) (*msg.Msg, error) {
+	args := req.Msg.Args
+	if len(args) != 2 {
+		return nil, errors.New("method expects exactly 2 arguments")
+	}
+
+	scope, ok := args[0].(string)
+	if !ok {
+		return nil, errors.New("first argument must be a string")
+	}
+
+	streams, err := msg.ParseSliceOfStrings(args[1])
+	if err != nil {
+		log.Error().Msgf("in subscribe failed to parse argument: %s", err.Error())
+		return nil, errors.New("second argument must be a list of strings")
+	}
+	switch scope {
+	case "public":
+		h.handleUnsubscribePublic(req.client, streams)
+		return msg.NewResponse(req.Msg, "unsubscribed", []interface{}{"public", req.client.GetPublicSubscriptions()}), nil
+
+	case "private":
+		uid := req.client.GetUID()
+		if uid != "" {
+			h.handleUnsubscribePrivate(req.client, uid, streams)
+			return msg.NewResponse(req.Msg, "unsubscribed", []interface{}{"private", req.client.GetPrivateSubscriptions()}), nil
+		}
+		return nil, errors.New("unauthorized")
+
+	}
+	return nil, errors.New("Unexpected scope " + scope)
+}
+
+func (h *Hub) handleUnsubscribePublic(client IClient, streams []string) {
+	for _, t := range streams {
+		topic, ok := h.PublicTopics[t]
+		if ok {
+			if topic.unsubscribe(client) {
+				client.UnsubscribePublic(t)
+				metrics.RecordHubUnsubscription("public", t)
 			}
-			uTopics, ok := h.PrivateTopics[uid]
-			if !ok {
-				continue
+			if topic.len() == 0 {
+				delete(h.PublicTopics, t)
 			}
+		}
+	}
+}
 
-			topic, ok := uTopics[t]
-			if ok {
-				if topic.unsubscribe(req.client) {
-					metrics.RecordHubUnsubscription("private", t)
-					req.client.UnsubscribePrivate(t)
-				}
+func (h *Hub) handleUnsubscribePrivate(client IClient, uid string, streams []string) {
+	uTopics, ok := h.PrivateTopics[uid]
+	if !ok {
+		return
+	}
 
-				if topic.len() == 0 {
-					delete(uTopics, t)
-				}
+	for _, t := range streams {
+		topic := uTopics[t]
+		if ok {
+			if topic.unsubscribe(client) {
+				client.UnsubscribePrivate(t)
+				metrics.RecordHubUnsubscription("private", t)
 			}
-
-			uTopics, ok = h.PrivateTopics[uid]
-			if ok && len(uTopics) == 0 {
-				delete(h.PrivateTopics, uid)
-			}
-
-		} else {
-			topic, ok := h.PublicTopics[t]
-			if ok {
-				if topic.unsubscribe(req.client) {
-					metrics.RecordHubUnsubscription("public", t)
-					req.client.UnsubscribePublic(t)
-				}
-
-				if topic.len() == 0 {
-					delete(h.PublicTopics, t)
-				}
+			if topic.len() == 0 {
+				delete(uTopics, t)
 			}
 		}
 	}
 
-	req.client.Send(responseMust(nil, map[string]interface{}{
-		"message": "unsubscribed",
-		"streams": req.client.GetSubscriptions(),
-	}))
+	if len(uTopics) == 0 {
+		delete(h.PrivateTopics, uid)
+	}
 }
