@@ -27,12 +27,12 @@ func TestParserSuccess(t *testing.T) {
 			Args:   []interface{}{},
 		}, msg)
 
-	msg, err = Parse([]byte(`[3,42,"temperature",[28.7]]`))
+	msg, err = Parse([]byte(`[3,"temperature",[28.7]]`))
 	assert.NoError(t, err)
 	assert.Equal(t,
 		&Msg{
-			Type:   Event,
-			ReqID:  42,
+			Type:   EventPublic,
+			ReqID:  0,
 			Method: "temperature",
 			Args:   []interface{}{28.7},
 		}, msg)
@@ -40,7 +40,7 @@ func TestParserSuccess(t *testing.T) {
 
 func TestParserErrorsMessageLength(t *testing.T) {
 	msg, err := Parse([]byte(`[1,42,"ping"]`))
-	assert.EqualError(t, err, "message must contains 4 elements")
+	assert.EqualError(t, err, "message must contain 4 elements")
 	assert.Nil(t, msg)
 }
 
@@ -51,8 +51,12 @@ func TestParserErrorsBadJSON(t *testing.T) {
 }
 
 func TestParserErrorsType(t *testing.T) {
-	msg, err := Parse([]byte(`[4,42,"ping",[]]`))
-	assert.EqualError(t, err, "message type must be 1, 2 or 3")
+	msg, err := Parse([]byte(`[5,42,"ping",[]]`))
+	assert.EqualError(t, err, "message type must be 1, 2, 3 or 4")
+	assert.Nil(t, msg)
+
+	msg, err = Parse([]byte(`[5,"ping",[]]`))
+	assert.EqualError(t, err, "message type must be 1, 2, 3 or 4")
 	assert.Nil(t, msg)
 
 	msg, err = Parse([]byte(`[1.1,42,"pong",[]]`))

@@ -2,6 +2,7 @@ package msg
 
 import (
 	"encoding/json"
+	"errors"
 )
 
 const (
@@ -11,8 +12,11 @@ const (
 	// Response type code
 	Response = 2
 
-	// Event type code
-	Event = 3
+	// EventPublic is public event type code
+	EventPublic = 3
+
+	// EventPrivate is private event type code
+	EventPrivate = 4
 )
 
 // Msg represent websocket messages, it could be either a request, a response or an event
@@ -34,17 +38,26 @@ func NewResponse(req *Msg, method string, args []interface{}) *Msg {
 }
 
 // Encode msg into json
-func (m *Msg) Encode() []byte {
-	s, err := json.Marshal([]interface{}{
-		m.Type,
-		m.ReqID,
-		m.Method,
-		m.Args,
-	})
-	if err != nil {
-		return []byte{}
+func (m *Msg) Encode() ([]byte, error) {
+	switch m.Type {
+	case Response, Request:
+		return json.Marshal([]interface{}{
+			m.Type,
+			m.ReqID,
+			m.Method,
+			m.Args,
+		})
+
+	case EventPrivate, EventPublic:
+		return json.Marshal([]interface{}{
+			m.Type,
+			m.Method,
+			m.Args,
+		})
+
+	default:
+		return nil, errors.New("invalid type")
 	}
-	return s
 }
 
 // Convss2is converts a string slice to interface slice more details: https://golang.org/doc/faq#convert_slice_of_interface)

@@ -73,37 +73,61 @@ func ParseSliceOfStrings(t interface{}) ([]string, error) {
 
 func Parse(msg []byte) (*Msg, error) {
 	req := Msg{}
-
 	var v []interface{}
 	if err := json.Unmarshal(msg, &v); err != nil {
 		return nil, fmt.Errorf("Could not parse message: %w", err)
 	}
 
-	if len(v) != 4 {
-		return nil, errors.New("message must contains 4 elements")
+	if len(v) < 3 {
+		return nil, errors.New("message is too small")
 	}
 
 	t, err := ParseUint8(v[0])
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse type: %w", err)
 	}
-	if t != Request && t != Response && t != Event {
-		return nil, errors.New("message type must be 1, 2 or 3")
-	}
 
-	reqID, err := ParseUint64(v[1])
-	if err != nil {
-		return nil, fmt.Errorf("failed to parse request ID: %w", err)
-	}
+	var reqID uint64
+	var method string
+	var args []interface{}
 
-	method, err := ParseString(v[2])
-	if err != nil {
-		return nil, fmt.Errorf("failed to parse method: %w", err)
-	}
+	switch t {
+	case Request, Response:
+		if len(v) != 4 {
+			return nil, errors.New("message must contain 4 elements")
+		}
 
-	args, err := ParseSlice(v[3])
-	if err != nil {
-		return nil, fmt.Errorf("failed to parse arguments: %w", err)
+		reqID, err = ParseUint64(v[1])
+		if err != nil {
+			return nil, fmt.Errorf("failed to parse request ID: %w", err)
+		}
+
+		method, err = ParseString(v[2])
+		if err != nil {
+			return nil, fmt.Errorf("failed to parse method: %w", err)
+		}
+
+		args, err = ParseSlice(v[3])
+		if err != nil {
+			return nil, fmt.Errorf("failed to parse arguments: %w", err)
+		}
+
+	case EventPrivate, EventPublic:
+		if len(v) != 3 {
+			return nil, errors.New("message must contain 3 elements")
+		}
+
+		method, err = ParseString(v[1])
+		if err != nil {
+			return nil, fmt.Errorf("failed to parse method: %w", err)
+		}
+
+		args, err = ParseSlice(v[2])
+		if err != nil {
+			return nil, fmt.Errorf("failed to parse arguments: %w", err)
+		}
+	default:
+		return nil, errors.New("message type must be 1, 2, 3 or 4")
 	}
 
 	req.Type = t

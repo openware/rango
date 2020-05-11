@@ -95,7 +95,10 @@ func (h *Hub) ListenWebsocketEvents() {
 		select {
 		case req := <-h.Requests:
 			resp := h.handleRequest(&req)
-			req.client.Send(string(resp.Encode()))
+			encoded, err := resp.Encode()
+			if err == nil {
+				req.client.Send(string(encoded))
+			}
 
 		case client := <-h.Unregister:
 			log.Info().Msgf("Unregistering client %s", client.GetUID())

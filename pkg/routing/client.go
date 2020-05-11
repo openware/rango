@@ -194,7 +194,12 @@ func (c *Client) read() {
 		req, err := msg.Parse(message)
 		if err != nil {
 			log.Error().Msgf("fail to parse message: %s", err.Error())
-			c.send <- msg.NewResponse(&msg.Msg{ReqID: 0}, "error", []interface{}{err.Error()}).Encode()
+
+			resp, err := msg.NewResponse(&msg.Msg{ReqID: 0}, "error", []interface{}{err.Error()}).Encode()
+			if err == nil {
+				c.send <- resp
+			}
+
 			continue
 		}
 
