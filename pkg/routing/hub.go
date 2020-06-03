@@ -112,6 +112,7 @@ func (h *Hub) ListenAMQP(q <-chan amqp.Delivery) {
 
 		if err != nil {
 			log.Error().Msgf("JSON parse error: %s, msg: %s", err.Error(), delivery.Body)
+			delivery.Ack(true)
 			continue
 		}
 
