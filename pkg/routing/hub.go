@@ -101,8 +101,7 @@ func (h *Hub) ListenWebsocketEvents() {
 }
 
 func (h *Hub) ListenAMQP(q <-chan amqp.Delivery) {
-	for {
-		delivery := <-q
+	for delivery := range q {
 		if isTrace() {
 			log.Trace().Msgf("AMQP msg received: %s -> %s", delivery.RoutingKey, delivery.Body)
 		}
@@ -113,6 +112,7 @@ func (h *Hub) ListenAMQP(q <-chan amqp.Delivery) {
 
 		if err != nil {
 			log.Error().Msgf("JSON parse error: %s, msg: %s", err.Error(), delivery.Body)
+			continue
 		}
 
 		switch len(s) {
@@ -143,6 +143,8 @@ func (h *Hub) ListenAMQP(q <-chan amqp.Delivery) {
 		}
 		delivery.Ack(true)
 	}
+
+	panic("Unexpected end of AMQP events")
 }
 
 func (h *Hub) handleSnapshot(msg *Event) (string, error) {
