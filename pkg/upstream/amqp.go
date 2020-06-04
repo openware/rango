@@ -73,7 +73,7 @@ func (session *AMQPSession) Stream(exName, qName string) (<-chan amqp.Delivery, 
 		qName,
 		false, // Durable
 		true,  // Delete when unused
-		false, // Exclusive
+		true,  // Exclusive
 		false, // No-wait
 		nil,   // Arguments
 	)
@@ -82,6 +82,7 @@ func (session *AMQPSession) Stream(exName, qName string) (<-chan amqp.Delivery, 
 		return nil, err
 	}
 
+	session.channel.ExchangeDeclare(exName, "topic", false, false, false, false, nil)
 	session.channel.QueueBind(qName, "#", exName, false, nil)
 
 	return session.channel.Consume(
@@ -95,9 +96,14 @@ func (session *AMQPSession) Stream(exName, qName string) (<-chan amqp.Delivery, 
 	)
 }
 
-// Close will cleanly shutdown the channel and connection.
-func (session *AMQPSession) Close() error {
-	err := session.channel.Close()
+// Close will delete the queue, close the channel and the connection.
+func (session *AMQPSession) Close(qName string) error {
+	log.Error().Msg("Closing connection to RabbitMQ")
+	_, err := session.channel.QueueDelete(qName, false, false, false)
+	if err != nil {
+		return err
+	}
+	err = session.channel.Close()
 	if err != nil {
 		return err
 	}

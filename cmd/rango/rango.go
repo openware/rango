@@ -25,7 +25,7 @@ var (
 	wsAddr   = flag.String("ws-addr", "", "http service address")
 	amqpAddr = flag.String("amqp-addr", "", "AMQP server address")
 	pubKey   = flag.String("pubKey", "config/rsa-key.pub", "Path to public key")
-	ex       = flag.String("exchange", "peatio.events.ranger", "Exchange name of upstream messages")
+	exName   = flag.String("exchange", "peatio.events.ranger", "Exchange name of upstream messages")
 )
 
 const prefix = "Bearer "
@@ -140,15 +140,17 @@ func main() {
 
 	rand.Seed(time.Now().UnixNano())
 	qName := fmt.Sprintf("rango.instance.%d", rand.Int())
-	ach, err := upstream.NewAMQPSession(getAMQPConnectionURL()).Stream(*ex, qName)
-
-	go hub.ListenWebsocketEvents()
-	go hub.ListenAMQP(ach)
+	mq := upstream.NewAMQPSession(getAMQPConnectionURL())
+	ach, err := mq.Stream(*exName, qName)
+	defer mq.Close(qName)
 
 	if err != nil {
 		log.Fatal().Msgf("AMQP init failed: %s", err.Error())
 		return
 	}
+
+	go hub.ListenWebsocketEvents()
+	go hub.ListenAMQP(ach)
 
 	wsHandler := func(w http.ResponseWriter, r *http.Request) {
 		routing.NewClient(hub, w, r)
