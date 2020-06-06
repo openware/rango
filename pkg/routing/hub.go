@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"sync"
 
 	msg "github.com/openware/rango/pkg/message"
 	"github.com/openware/rango/pkg/metrics"
@@ -35,6 +36,8 @@ type Hub struct {
 
 	// Storage for incremental objects
 	IncrementalObjects map[string]*IncrementalObject
+
+	mutex sync.Mutex
 }
 
 type Event struct {
@@ -191,6 +194,8 @@ func (h *Hub) routeMessage(msg *Event) {
 	if isTrace() {
 		log.Trace().Msgf("Routing message %v", msg)
 	}
+	h.mutex.Lock()
+	defer h.mutex.Unlock()
 
 	switch msg.Scope {
 	case "public", "global":
@@ -247,6 +252,9 @@ func (h *Hub) routeMessage(msg *Event) {
 }
 
 func (h *Hub) unsubscribeAll(client IClient) {
+	h.mutex.Lock()
+	defer h.mutex.Unlock()
+
 	for t, topic := range h.PublicTopics {
 		if topic.unsubscribe(client) {
 			metrics.RecordHubUnsubscription("public", t)
@@ -302,6 +310,9 @@ func (h *Hub) handleRequest(req *Request) {
 }
 
 func (h *Hub) handleSubscribe(req *Request) {
+	h.mutex.Lock()
+	defer h.mutex.Unlock()
+
 	for _, t := range req.Streams {
 		if isPrivateStream(t) {
 			uid := req.client.GetUID()
@@ -357,6 +368,9 @@ func (h *Hub) handleSubscribe(req *Request) {
 }
 
 func (h *Hub) handleUnsubscribe(req *Request) {
+	h.mutex.Lock()
+	defer h.mutex.Unlock()
+
 	for _, t := range req.Streams {
 		if isPrivateStream(t) {
 			uid := req.client.GetUID()

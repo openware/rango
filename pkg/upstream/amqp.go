@@ -19,13 +19,14 @@ const (
 
 // NewAMQPSession creates a new consumer state instance, and automatically
 // attempts to connect to the server.
-func NewAMQPSession(addr string) *AMQPSession {
+func NewAMQPSession(addr string) (*AMQPSession, error) {
 	session := AMQPSession{}
 	err := session.connect(addr)
 	if err != nil {
 		log.Error().Msgf("Connection to AMQP failed: %s", err.Error())
+		return nil, err
 	}
-	return &session
+	return &session, nil
 }
 
 // connect will create a new AMQP connection
