@@ -15,13 +15,18 @@ import (
 var (
 	ex       = flag.String("exchange", "peatio.events.ranger", "Exchange name of upstream messages")
 	amqpAddr = flag.String("amqp-addr", "amqp://localhost:5672", "AMQP server address")
-	wait     = flag.Int64("wait", 2, "Time to wait between submit batch of messages")
+	wait     = flag.Float64("wait", 2, "Time to wait between submit batch of messages")
 )
 
 func main() {
 	flag.Parse()
 
-	mq := upstream.NewAMQPSession(*amqpAddr)
+	mq, err := upstream.NewAMQPSession(*amqpAddr)
+
+	if err != nil {
+		log.Error().Msg(err.Error())
+		return
+	}
 
 	for {
 		file, err := os.Open("msg.txt")
@@ -44,7 +49,7 @@ func main() {
 
 		}
 		file.Close()
-		log.Info().Msgf("Waiting %d seconds", *wait)
-		time.Sleep(time.Duration(int64(time.Second) * *wait))
+		log.Info().Msgf("Waiting %f seconds", *wait)
+		time.Sleep(time.Duration(float64(time.Second) * *wait))
 	}
 }

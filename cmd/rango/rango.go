@@ -140,7 +140,11 @@ func main() {
 
 	rand.Seed(time.Now().UnixNano())
 	qName := fmt.Sprintf("rango.instance.%d", rand.Int())
-	mq := upstream.NewAMQPSession(getAMQPConnectionURL())
+	mq, err := upstream.NewAMQPSession(getAMQPConnectionURL())
+	if err != nil {
+		log.Fatal().Msgf("creating new AMQP session failed: %s", err.Error())
+		return
+	}
 	ach, err := mq.Stream(*exName, qName)
 	defer mq.Close(qName)
 
