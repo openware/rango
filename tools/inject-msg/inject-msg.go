@@ -41,12 +41,13 @@ func main() {
 
 			msg := strings.Split(scanner.Text(), " ")
 
+			log.Info().Msgf("Pushing to %s", msg[0])
+
 			if err := mq.Push(*ex, msg[0], []byte(msg[1])); err != nil {
 				fmt.Printf("Push failed: %s\n", err)
 			} else {
-				log.Info().Msgf("Pushed on %s msg: %s", msg[0], msg[1])
+				log.Info().Msgf("Pushed to %s", msg[0])
 			}
-
 		}
 		file.Close()
 		log.Info().Msgf("Waiting %f seconds", *wait)
