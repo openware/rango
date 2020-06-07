@@ -145,7 +145,7 @@ func main() {
 		log.Fatal().Msgf("creating new AMQP session failed: %s", err.Error())
 		return
 	}
-	ach, err := mq.Stream(*exName, qName)
+	err = mq.Stream(*exName, qName, hub.ReceiveMsg)
 	defer mq.Close(qName)
 
 	if err != nil {
@@ -154,7 +154,6 @@ func main() {
 	}
 
 	go hub.ListenWebsocketEvents()
-	go hub.ListenAMQP(ach)
 
 	wsHandler := func(w http.ResponseWriter, r *http.Request) {
 		routing.NewClient(hub, w, r)

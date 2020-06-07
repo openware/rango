@@ -103,52 +103,49 @@ func (h *Hub) ListenWebsocketEvents() {
 	}
 }
 
-func (h *Hub) ListenAMQP(q <-chan amqp.Delivery) {
-	for delivery := range q {
-		if isTrace() {
-			log.Trace().Msgf("AMQP msg received: %s -> %s", delivery.RoutingKey, delivery.Body)
-		}
-		s := strings.Split(delivery.RoutingKey, ".")
+// ReceiveMsg handles AMQP messages
+func (h *Hub) ReceiveMsg(delivery amqp.Delivery) {
+	if isTrace() {
+		log.Trace().Msgf("AMQP msg received: %s -> %s", delivery.RoutingKey, delivery.Body)
+	}
+	s := strings.Split(delivery.RoutingKey, ".")
 
-		var o interface{}
-		err := json.Unmarshal(delivery.Body, &o)
+	var o interface{}
+	err := json.Unmarshal(delivery.Body, &o)
 
-		if err != nil {
-			log.Error().Msgf("JSON parse error: %s, msg: %s", err.Error(), delivery.Body)
-			delivery.Ack(true)
-			continue
-		}
-
-		switch len(s) {
-		case 2:
-			msg := Event{
-				Scope:  s[0],
-				Stream: "",
-				Type:   s[1],
-				Topic:  getTopic(s[0], s[0], s[1]),
-				Body:   o,
-			}
-
-			h.routeMessage(&msg)
-
-		case 3:
-			msg := Event{
-				Scope:  s[0],
-				Stream: s[1],
-				Type:   s[2],
-				Topic:  getTopic(s[0], s[1], s[2]),
-				Body:   o,
-			}
-
-			h.routeMessage(&msg)
-
-		default:
-			log.Error().Msgf("Bad routing key: %s", delivery.RoutingKey)
-		}
+	if err != nil {
+		log.Error().Msgf("JSON parse error: %s, msg: %s", err.Error(), delivery.Body)
 		delivery.Ack(true)
+		return
 	}
 
-	panic("Unexpected end of AMQP events")
+	switch len(s) {
+	case 2:
+		msg := Event{
+			Scope:  s[0],
+			Stream: "",
+			Type:   s[1],
+			Topic:  getTopic(s[0], s[0], s[1]),
+			Body:   o,
+		}
+
+		h.routeMessage(&msg)
+
+	case 3:
+		msg := Event{
+			Scope:  s[0],
+			Stream: s[1],
+			Type:   s[2],
+			Topic:  getTopic(s[0], s[1], s[2]),
+			Body:   o,
+		}
+
+		h.routeMessage(&msg)
+
+	default:
+		log.Error().Msgf("Bad routing key: %s", delivery.RoutingKey)
+	}
+	delivery.Ack(true)
 }
 
 func (h *Hub) handleSnapshot(msg *Event) (string, error) {
