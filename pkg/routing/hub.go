@@ -96,7 +96,7 @@ func (h *Hub) ListenWebsocketEvents() {
 			h.handleRequest(&req)
 
 		case client := <-h.Unregister:
-			log.Info().Msgf("Unregistering client %s", client.GetUID())
+			log.Info().Msgf("Unregistering client (%s)", client.GetUID())
 			h.unsubscribeAll(client)
 			client.Close()
 		}
