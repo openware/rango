@@ -36,6 +36,8 @@ var upgrader = websocket.Upgrader{
 	WriteBufferSize: 1024,
 }
 
+var maxBufferedMessages = 256
+
 // FIXME: IClient looks very wrong.
 type IClient interface {
 	Send(string)
@@ -75,7 +77,7 @@ func NewClient(hub *Hub, w http.ResponseWriter, r *http.Request) {
 	client := &Client{
 		hub:     hub,
 		conn:    conn,
-		send:    make(chan []byte, 256),
+		send:    make(chan []byte, maxBufferedMessages),
 		UID:     r.Header.Get("JwtUID"),
 		pubSub:  []string{},
 		privSub: []string{},
@@ -103,7 +105,12 @@ func NewClient(hub *Hub, w http.ResponseWriter, r *http.Request) {
 }
 
 func (c *Client) Send(s string) {
-	c.send <- []byte(s)
+	if len(c.send) == maxBufferedMessages {
+		log.Warn().Msg("Closing slow websocket connection")
+		c.conn.Close()
+	} else {
+		c.send <- []byte(s)
+	}
 }
 
 func (c *Client) Close() {
@@ -178,7 +185,9 @@ func parseStreamsFromURI(uri string) []string {
 // reads from this goroutine.
 func (c *Client) read() {
 	defer func() {
+		log.Debug().Msgf("Closing client read (%s)", c.GetUID())
 		c.hub.Unregister <- c
+		metrics.RecordHubClientClose()
 		c.conn.Close()
 	}()
 
@@ -229,9 +238,9 @@ func (c *Client) read() {
 func (c *Client) write() {
 	ticker := time.NewTicker(pingPeriod)
 	defer func() {
+		log.Debug().Msgf("Closing client write (%s)", c.GetUID())
 		ticker.Stop()
 		c.conn.Close()
-		metrics.RecordHubClientClose()
 	}()
 
 	for {
