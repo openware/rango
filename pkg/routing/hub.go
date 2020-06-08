@@ -96,7 +96,7 @@ func (h *Hub) ListenWebsocketEvents() {
 			h.handleRequest(&req)
 
 		case client := <-h.Unregister:
-			log.Info().Msgf("Unregistering client %s", client.GetUID())
+			log.Info().Msgf("Unregistering client (%s)", client.GetUID())
 			h.unsubscribeAll(client)
 			client.Close()
 		}
@@ -115,7 +115,6 @@ func (h *Hub) ReceiveMsg(delivery amqp.Delivery) {
 
 	if err != nil {
 		log.Error().Msgf("JSON parse error: %s, msg: %s", err.Error(), delivery.Body)
-		delivery.Ack(true)
 		return
 	}
 
@@ -145,7 +144,6 @@ func (h *Hub) ReceiveMsg(delivery amqp.Delivery) {
 	default:
 		log.Error().Msgf("Bad routing key: %s", delivery.RoutingKey)
 	}
-	delivery.Ack(true)
 }
 
 func (h *Hub) handleSnapshot(msg *Event) (string, error) {
