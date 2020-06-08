@@ -276,8 +276,8 @@ func (session *AMQPSession) Stream(exName, qName string, consumer func(amqp.Deli
 			ch, err := session.channel.Consume(
 				qName,
 				"",    // Consumer
-				false, // Auto-Ack
-				false, // Exclusive
+				true,  // Auto-Ack
+				true,  // Exclusive
 				false, // No-local
 				false, // No-Wait
 				nil,   // Args
