@@ -3,6 +3,8 @@ package routing
 import (
 	"bytes"
 	"net/http"
+	"net/url"
+	"os"
 	"strings"
 	"time"
 
@@ -34,6 +36,7 @@ var (
 var upgrader = websocket.Upgrader{
 	ReadBufferSize:  1024,
 	WriteBufferSize: 1024,
+	CheckOrigin:     checkSameOrigin(os.Getenv("API_CORS_ORIGINS")),
 }
 
 var maxBufferedMessages = 256
@@ -65,6 +68,55 @@ type Client struct {
 
 	// Buffered channel of outbound messages.
 	send chan []byte
+}
+
+func checkSameOrigin(origins string) func(r *http.Request) bool {
+	if origins == "" {
+		return func(r *http.Request) bool {
+			origin := r.Header["Origin"]
+			if len(origin) == 0 {
+				return true
+			}
+			u, err := url.Parse(origin[0])
+			if err != nil {
+				return false
+			}
+			return strings.EqualFold(u.Host, r.Host)
+		}
+	}
+
+	hosts := []string{}
+
+	for _, o := range strings.Split(origins, ",") {
+		o = strings.TrimSpace(o)
+		if strings.HasPrefix(o, "http://") || strings.HasPrefix(o, "https://") {
+			u, err := url.Parse(o)
+			if err != nil || u.Host == "" {
+				panic("Failed to parse url in API_CORS_ORIGINS: " + o)
+			}
+			hosts = append(hosts, u.Host)
+		} else {
+			hosts = append(hosts, o)
+		}
+	}
+
+	return func(r *http.Request) bool {
+		origin := r.Header["Origin"]
+		if len(origin) == 0 {
+			return true
+		}
+		u, err := url.Parse(origin[0])
+		if err != nil {
+			return false
+		}
+
+		for _, host := range hosts {
+			if strings.EqualFold(u.Host, host) {
+				return true
+			}
+		}
+		return false
+	}
 }
 
 // NewClient handles websocket requests from the peer.
