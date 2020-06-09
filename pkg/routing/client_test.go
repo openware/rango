@@ -1,6 +1,7 @@
 package routing
 
 import (
+	"net/http"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -66,4 +67,73 @@ func TestParseStreamsFromURI(t *testing.T) {
 	assert.Equal(t, []string{"aaa", "bbb"}, parseStreamsFromURI("/?stream=aaa&stream=bbb"))
 	assert.Equal(t, []string{"aaa", "bbb"}, parseStreamsFromURI("/?stream=aaa,bbb"))
 	assert.Equal(t, []string{"aaa", "bbb"}, parseStreamsFromURI("/public/?stream=aaa,bbb"))
+}
+
+func TestCheckSameOriginEmpty(t *testing.T) {
+	var checkSameOriginTests = []struct {
+		ok bool
+		r  *http.Request
+	}{
+		{false, &http.Request{Host: "example.org", Header: map[string][]string{"Origin": {"https://other.org"}}}},
+		{true, &http.Request{Host: "example.org", Header: map[string][]string{"Origin": {"https://example.org"}}}},
+		{true, &http.Request{Host: "Example.org", Header: map[string][]string{"Origin": {"https://example.org"}}}},
+	}
+
+	for _, tt := range checkSameOriginTests {
+		ok := checkSameOrigin("")(tt.r)
+		if tt.ok != ok {
+			t.Errorf("checkSameOrigin(%+v) returned %v, want %v", tt.r, ok, tt.ok)
+		}
+	}
+}
+
+func TestCheckSameOriginDomainsSetup(t *testing.T) {
+	var checkSameOriginTests = []struct {
+		ok bool
+		r  *http.Request
+	}{
+		{false, &http.Request{Host: "example.org", Header: map[string][]string{"Origin": {"https://other.org"}}}},
+		{true, &http.Request{Host: "whatever.org", Header: map[string][]string{"Origin": {"https://example.org"}}}},
+		{true, &http.Request{Host: "whatever.org", Header: map[string][]string{"Origin": {"https://Example.org"}}}},
+		{true, &http.Request{Host: "whatever.org", Header: map[string][]string{"Origin": {"https://example.com"}}}},
+		{true, &http.Request{Host: "whatever.org", Header: map[string][]string{"Origin": {"https://Example.com"}}}},
+		{true, &http.Request{Host: "whatever.org", Header: map[string][]string{"Origin": {}}}},
+	}
+
+	checker := checkSameOrigin("example.org,example.com")
+	for _, tt := range checkSameOriginTests {
+		ok := checker(tt.r)
+		if tt.ok != ok {
+			t.Errorf("checkSameOrigin(%+v) returned %v, want %v", tt.r, ok, tt.ok)
+		}
+	}
+
+	checker = checkSameOrigin("example.org, example.com")
+	for _, tt := range checkSameOriginTests {
+		ok := checker(tt.r)
+		if tt.ok != ok {
+			t.Errorf("checkSameOrigin(%+v) returned %v, want %v", tt.r, ok, tt.ok)
+		}
+	}
+
+	checker = checkSameOrigin("https://example.org,https://example.com")
+	for _, tt := range checkSameOriginTests {
+		ok := checker(tt.r)
+		if tt.ok != ok {
+			t.Errorf("checkSameOrigin(%+v) returned %v, want %v", tt.r, ok, tt.ok)
+		}
+	}
+
+	checker = checkSameOrigin("https://example.org, https://example.com")
+	for _, tt := range checkSameOriginTests {
+		ok := checker(tt.r)
+		if tt.ok != ok {
+			t.Errorf("checkSameOrigin(%+v) returned %v, want %v", tt.r, ok, tt.ok)
+		}
+	}
+}
+
+func TestCheckSameOriginBadConfiguration(t *testing.T) {
+	assert.Panics(t, func() { checkSameOrigin("https://ex ample.org") })
+	assert.Panics(t, func() { checkSameOrigin("https://ex:ample.org") })
 }
