@@ -1,4 +1,5 @@
-FROM golang:1.13-alpine AS builder
+FROM golang:1.14-alpine AS builder
+ARG BUILD_ARGS
 
 WORKDIR /build
 ENV CGO_ENABLED=1 \
@@ -7,12 +8,13 @@ ENV CGO_ENABLED=1 \
 
 COPY go.mod go.sum ./
 RUN go mod download
+RUN apk add build-base
 
 COPY . .
-RUN go build ./cmd/rango
+RUN set -x \
+￼  && go build $BUILD_ARGS ./cmd/rango
 
-
-FROM alpine:3.9
+FROM alpine:3.12
 
 RUN apk add ca-certificates
 WORKDIR app

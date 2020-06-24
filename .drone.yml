@@ -64,6 +64,31 @@ steps:
         - master
         - "*-stable"
 
+  - name: Prepare debug container version
+    image: debian
+    commands:
+      - echo $(<.tags)-debug > .tags
+    when:
+        branch:
+        - master
+        - "*-stable"
+
+  - name: Build debug container
+    image: plugins/docker
+    settings:
+      username:
+        from_secret: quay_username
+      password:
+        from_secret: quay_password
+      repo: quay.io/openware/rango
+      registry: quay.io
+      build_args:
+        - BUILD_ARGS=-race
+    when:
+        branch:
+        - master
+        - "*-stable"
+
 trigger:
   event:
     - push
