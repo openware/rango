@@ -24,6 +24,7 @@ steps:
       branch:
         - master
         - "*-stable"
+        - feature/build-with-race-detector
 
   - name: Build container
     image: plugins/docker
@@ -72,6 +73,7 @@ steps:
         branch:
         - master
         - "*-stable"
+        - feature/build-with-race-detector
 
   - name: Build debug container
     image: plugins/docker
@@ -88,6 +90,7 @@ steps:
         branch:
         - master
         - "*-stable"
+        - feature/build-with-race-detector
 
 trigger:
   event:
