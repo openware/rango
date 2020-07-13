@@ -15,10 +15,10 @@ import (
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 
+	"github.com/openware/rango/pkg/amqp"
 	"github.com/openware/rango/pkg/auth"
 	"github.com/openware/rango/pkg/metrics"
 	"github.com/openware/rango/pkg/routing"
-	"github.com/openware/rango/pkg/upstream"
 )
 
 var (
@@ -140,7 +140,7 @@ func main() {
 
 	rand.Seed(time.Now().UnixNano())
 	qName := fmt.Sprintf("rango.instance.%d", rand.Int())
-	mq, err := upstream.NewAMQPSession(getAMQPConnectionURL())
+	mq, err := amqp.NewAMQPSession(getAMQPConnectionURL())
 	if err != nil {
 		log.Fatal().Msgf("creating new AMQP session failed: %s", err.Error())
 		return

@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/openware/rango/pkg/upstream"
+	"github.com/openware/rango/pkg/amqp"
 	"github.com/rs/zerolog/log"
 )
 
@@ -21,7 +21,7 @@ var (
 func main() {
 	flag.Parse()
 
-	mq, err := upstream.NewAMQPSession(*amqpAddr)
+	mq, err := amqp.NewAMQPSession(*amqpAddr)
 
 	if err != nil {
 		log.Error().Msg(err.Error())
