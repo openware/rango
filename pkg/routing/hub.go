@@ -208,6 +208,10 @@ func (h *Hub) routeMessage(msg *Event) {
 			}
 			return
 		case isSnapshotObject(msg.Type):
+			if ok {
+				topic.broadcast(msg)
+			}
+
 			_, err := h.handleSnapshot(msg)
 			if err != nil {
 				log.Error().Msgf("handleSnapshot failed: %s", err.Error())
