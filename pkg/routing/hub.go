@@ -353,7 +353,11 @@ func (h *Hub) handleSubscribe(req *Request) {
 				if ok && o.Snapshot != "" {
 					req.client.Send(o.Snapshot)
 					for _, inc := range o.Increments {
-						req.client.Send(inc)
+						err := req.client.Send(inc)
+						if err != nil {
+							log.Warn().Msgf("Error on sending %d increments to client", len(o.Increments))
+							break
+						}
 					}
 				}
 			}

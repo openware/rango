@@ -13,8 +13,9 @@ type MockedClient struct {
 	mock.Mock
 }
 
-func (c *MockedClient) Send(m string) {
+func (c *MockedClient) Send(m string) error {
 	c.Called(m)
+	return nil
 }
 
 func (c *MockedClient) Close() {

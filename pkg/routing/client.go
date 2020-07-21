@@ -2,6 +2,7 @@ package routing
 
 import (
 	"bytes"
+	"errors"
 	"net/http"
 	"net/url"
 	"os"
@@ -25,7 +26,7 @@ const (
 	pingPeriod = (pongWait * 9) / 10
 
 	// Maximum message size allowed from peer.
-	maxMessageSize = 512
+	maxMessageSize = 1024 * 64
 )
 
 var (
@@ -43,7 +44,7 @@ var maxBufferedMessages = 256
 
 // FIXME: IClient looks very wrong.
 type IClient interface {
-	Send(string)
+	Send(string) error
 	Close()
 	GetUID() string
 	GetSubscriptions() []string
@@ -156,12 +157,18 @@ func NewClient(hub *Hub, w http.ResponseWriter, r *http.Request) {
 	go client.read()
 }
 
-func (c *Client) Send(s string) {
-	if len(c.send) == maxBufferedMessages {
+func (c *Client) Send(s string) error {
+	select {
+	case c.send <- []byte(s):
+		return nil
+	default:
 		log.Warn().Msg("Closing slow websocket connection")
-		c.conn.Close()
-	} else {
-		c.send <- []byte(s)
+		err := c.conn.Close()
+		if err != nil {
+			log.Warn().Msgf("Error while closing connection: %s", err.Error())
+		}
+
+		return errors.New("client connection buffer is full")
 	}
 }
 
