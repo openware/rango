@@ -208,9 +208,17 @@ func (h *Hub) routeMessage(msg *Event) {
 			}
 			return
 		case isSnapshotObject(msg.Type):
+			parts := strings.Split(msg.Topic, ".")
+			market := parts[0]
+			snapTopic := market + ".ob-snap"
+			oldTopic := msg.Topic
+			msg.Topic = snapTopic
+			t, ok := h.PublicTopics[snapTopic]
 			if ok {
-				topic.broadcast(msg)
+				log.Trace().Msgf("Sending new snapshot %s", snapTopic)
+				t.broadcast(msg)
 			}
+			msg.Topic = oldTopic
 
 			_, err := h.handleSnapshot(msg)
 			if err != nil {
@@ -225,7 +233,6 @@ func (h *Hub) routeMessage(msg *Event) {
 		} else {
 			if isTrace() {
 				log.Trace().Msgf("No public registration to %s", msg.Topic)
-				log.Trace().Msgf("Public topics: %v", h.PublicTopics)
 			}
 		}
 
@@ -241,7 +248,6 @@ func (h *Hub) routeMessage(msg *Event) {
 		}
 		if isTrace() {
 			log.Trace().Msgf("No private registration to %s", msg.Topic)
-			log.Trace().Msgf("Private topics: %v", h.PrivateTopics)
 		}
 
 	default:
