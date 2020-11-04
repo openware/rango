@@ -41,11 +41,16 @@ var upgrader = websocket.Upgrader{
 
 var maxBufferedMessages = 256
 
+type Auth struct {
+	UID  string
+	Role string
+}
+
 // FIXME: IClient looks very wrong.
 type IClient interface {
 	Send(string)
 	Close()
-	GetUID() string
+	GetAuth() Auth
 	GetSubscriptions() []string
 	SubscribePublic(string)
 	SubscribePrivate(string)
@@ -58,7 +63,7 @@ type Client struct {
 	hub *Hub
 
 	// User ID if authorized
-	UID string
+	Auth Auth
 
 	pubSub  []string
 	privSub []string
@@ -127,18 +132,21 @@ func NewClient(hub *Hub, w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	client := &Client{
-		hub:     hub,
-		conn:    conn,
-		send:    make(chan []byte, maxBufferedMessages),
-		UID:     r.Header.Get("JwtUID"),
+		hub:  hub,
+		conn: conn,
+		send: make(chan []byte, maxBufferedMessages),
+		Auth: Auth{
+			UID:  r.Header.Get("JwtUID"),
+			Role: r.Header.Get("JwtRole"),
+		},
 		pubSub:  []string{},
 		privSub: []string{},
 	}
 
-	if client.UID == "" {
+	if client.Auth.UID == "" {
 		log.Info().Msgf("New anonymous connection")
 	} else {
-		log.Info().Msgf("New authenticated connection: %s", client.UID)
+		log.Info().Msgf("New authenticated connection: %s", client.Auth.UID)
 	}
 
 	hub.handleSubscribe(&Request{
@@ -169,8 +177,8 @@ func (c *Client) Close() {
 	close(c.send)
 }
 
-func (c *Client) GetUID() string {
-	return c.UID
+func (c *Client) GetAuth() Auth {
+	return c.Auth
 }
 
 func (c *Client) GetSubscriptions() []string {
@@ -237,7 +245,7 @@ func parseStreamsFromURI(uri string) []string {
 // reads from this goroutine.
 func (c *Client) read() {
 	defer func() {
-		log.Debug().Msgf("Closing client read (%s)", c.GetUID())
+		log.Debug().Msgf("Closing client read (%s)", c.GetAuth().UID)
 		c.hub.Unregister <- c
 		metrics.RecordHubClientClose()
 		c.conn.Close()
@@ -290,7 +298,7 @@ func (c *Client) read() {
 func (c *Client) write() {
 	ticker := time.NewTicker(pingPeriod)
 	defer func() {
-		log.Debug().Msgf("Closing client write (%s)", c.GetUID())
+		log.Debug().Msgf("Closing client write (%s)", c.GetAuth().UID)
 		ticker.Stop()
 		c.conn.Close()
 	}()

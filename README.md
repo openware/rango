@@ -101,6 +101,40 @@ Rango exposes metrics in Prometheus format on the port 4242.
 ./rango
 ```
 
+## Scopes
+
+In rango there are three message scopes: private, public and prefixed.
+
+### Private
+
+Private scope is for messages, addressed to specific user, like user order updates or user trades.
+AMQP messages with routing key `private.UID.event` (`private.IDABC0000001.trade`) are routed as private messages.
+
+### Public
+
+Public messages are messages addressed to everyone who is connected, like orderbook updates, klines and tickers.
+AMQP message with routing key `public.market_id.event` (`public.btcusd.trade`) are routed as public messages.
+
+### Prefixed
+
+Prefixed scope is a scope for messages, which are addressed to user, authorized by rango RBAC.
+For example, notifications for admin, only users with roles admin amd superadmin can subscribe to these topics.
+AMQP message with routing key `(prefix).market_id.event` (`admin.btcusd.sys`) are routed as prefixed messages.
+
+#### Prefixed messages setup
+
+To allow specific user roles to connect to prefixed messages, set `RANGO_RBAC_PREFIX` env.
+Without this env, nobody will have ability to subscribe.
+This env should be set per every env, planned to be used:
+
+```
+RANGO_RBAC_ADMIN=admin,superadmin
+RANGO_RBAC_SYS=admin,superadmin,operator
+RANGO_RBAC_ACCOUNTING=accountant,operator
+```
+
+This config allows, for example to subscribe for user with role 'accountant' to `accounting.asset.new` messages.
+
 ## Connect to public channel
 
 ```bash
@@ -127,4 +161,6 @@ wscat --connect localhost:8080/private --header "Authorization: Bearer ${JWT}"
 {"event":"unsubscribe","streams":["eurusd.trades"]}
 ```
 
+```
 {"event":"subscribe","streams":["btcusd.trades","ethusd.ob-inc","ethusd.trades","xrpusd.ob-inc","xrpusd.trades","usdtusd.ob-inc","usdtusd.trades"]}
+```

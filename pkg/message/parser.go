@@ -27,7 +27,11 @@ func Parse(msg []byte) (Request, error) {
 	switch v["event"] {
 	case "subscribe":
 		parsed.Method = "subscribe"
-		switch reflect.TypeOf(v["streams"]).Kind() {
+		streams, ok := v["streams"]
+		if !ok {
+			return parsed, fmt.Errorf("No streams provided")
+		}
+		switch reflect.TypeOf(streams).Kind() {
 		case reflect.Slice:
 			streams := reflect.ValueOf(v["streams"])
 			for i := 0; i < streams.Len(); i++ {
@@ -36,7 +40,11 @@ func Parse(msg []byte) (Request, error) {
 		}
 	case "unsubscribe":
 		parsed.Method = "unsubscribe"
-		switch reflect.TypeOf(v["streams"]).Kind() {
+		streams, ok := v["streams"]
+		if !ok {
+			return parsed, fmt.Errorf("No streams provided")
+		}
+		switch reflect.TypeOf(streams).Kind() {
 		case reflect.Slice:
 			streams := reflect.ValueOf(v["streams"])
 			for i := 0; i < streams.Len(); i++ {

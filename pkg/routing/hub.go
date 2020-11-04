@@ -34,8 +34,14 @@ type Hub struct {
 	// List of clients registered to private topics
 	PrivateTopics map[string]map[string]*Topic
 
+	// map[prefix -> map[topic -> *Topic]]
+	PrefixedTopics map[string]map[string]*Topic
+
 	// Storage for incremental objects
 	IncrementalObjects map[string]*IncrementalObject
+
+	// map[prefix -> allowed roles]
+	RBAC map[string][]string
 
 	mutex sync.Mutex
 }
@@ -53,13 +59,15 @@ type IncrementalObject struct {
 	Increments []string
 }
 
-func NewHub() *Hub {
+func NewHub(rbac map[string][]string) *Hub {
 	return &Hub{
 		Requests:           make(chan Request),
 		Unregister:         make(chan IClient),
 		PublicTopics:       make(map[string]*Topic, 100),
 		PrivateTopics:      make(map[string]map[string]*Topic, 1000),
+		PrefixedTopics:     make(map[string]map[string]*Topic, 100),
 		IncrementalObjects: make(map[string]*IncrementalObject, 5),
+		RBAC:               rbac,
 	}
 }
 
@@ -96,7 +104,7 @@ func (h *Hub) ListenWebsocketEvents() {
 			h.handleRequest(&req)
 
 		case client := <-h.Unregister:
-			log.Info().Msgf("Unregistering client (%s)", client.GetUID())
+			log.Info().Msgf("Unregistering client (%s)", client.GetAuth().UID)
 			h.unsubscribeAll(client)
 			client.Close()
 		}
@@ -185,6 +193,28 @@ func (h *Hub) handleIncrement(msg *Event) (string, error) {
 
 }
 
+func (h *Hub) handleIncrementalMessage(topic *Topic, ok bool, msg *Event) {
+	switch {
+	case isIncrementObject(msg.Type):
+		rm, err := h.handleIncrement(msg)
+		if err != nil {
+			log.Error().Msgf("handleIncrement failed: %s", err.Error())
+			return
+		}
+		if ok {
+			topic.broadcastRaw(rm)
+		}
+		return
+	case isSnapshotObject(msg.Type):
+		_, err := h.handleSnapshot(msg)
+		if err != nil {
+			log.Error().Msgf("handleSnapshot failed: %s", err.Error())
+			return
+		}
+		return
+	}
+}
+
 func (h *Hub) routeMessage(msg *Event) {
 	if isTrace() {
 		log.Trace().Msgf("Routing message %v", msg)
@@ -196,25 +226,7 @@ func (h *Hub) routeMessage(msg *Event) {
 	case "public", "global":
 		topic, ok := h.PublicTopics[msg.Topic]
 
-		switch {
-		case isIncrementObject(msg.Type):
-			rm, err := h.handleIncrement(msg)
-			if err != nil {
-				log.Error().Msgf("handleIncrement failed: %s", err.Error())
-				return
-			}
-			if ok {
-				topic.broadcastRaw(msg.Topic, rm)
-			}
-			return
-		case isSnapshotObject(msg.Type):
-			_, err := h.handleSnapshot(msg)
-			if err != nil {
-				log.Error().Msgf("handleSnapshot failed: %s", err.Error())
-				return
-			}
-			return
-		}
+		h.handleIncrementalMessage(topic, ok, msg)
 
 		if ok {
 			topic.broadcast(msg)
@@ -241,7 +253,19 @@ func (h *Hub) routeMessage(msg *Event) {
 		}
 
 	default:
-		log.Error().Msgf("Invalid message scope %s", msg.Scope)
+		scope, ok := h.PrefixedTopics[msg.Scope]
+		if !ok {
+			return
+		}
+
+		topic, ok := scope[msg.Topic]
+		if !ok {
+			return
+		}
+
+		topic.broadcast(msg)
+
+		log.Trace().Msgf("Broadcasted message scope %s", msg.Scope)
 	}
 
 }
@@ -259,7 +283,23 @@ func (h *Hub) unsubscribeAll(client IClient) {
 		}
 	}
 
-	uid := client.GetUID()
+	for k, scope := range h.PrefixedTopics {
+		for t, topic := range scope {
+			if topic.unsubscribe(client) {
+				metrics.RecordHubUnsubscription("prefixed", t)
+			}
+
+			if topic.len() == 0 {
+				delete(scope, t)
+			}
+		}
+
+		if len(scope) == 0 {
+			delete(h.PrefixedTopics, k)
+		}
+	}
+
+	uid := client.GetAuth().UID
 	topics, ok := h.PrivateTopics[uid]
 	if !ok {
 		return
@@ -277,6 +317,7 @@ func (h *Hub) unsubscribeAll(client IClient) {
 	if len(topics) == 0 {
 		delete(h.PrivateTopics, uid)
 	}
+
 }
 
 func responseMust(e error, r interface{}) string {
@@ -292,6 +333,9 @@ func responseMust(e error, r interface{}) string {
 func isPrivateStream(s string) bool {
 	return strings.Count(s, ".") == 0
 }
+func isPrefixedStream(s string) bool {
+	return strings.Count(s, ".") == 2
+}
 
 func (h *Hub) handleRequest(req *Request) {
 	switch req.Method {
@@ -304,55 +348,125 @@ func (h *Hub) handleRequest(req *Request) {
 	}
 }
 
+func (h *Hub) subscribePrivate(t string, req *Request) {
+	uid := req.client.GetAuth().UID
+	if uid == "" {
+		log.Error().Msgf("Anonymous user tried to subscribe to private stream %s", t)
+		return
+	}
+
+	uTopics, ok := h.PrivateTopics[uid]
+	if !ok {
+		uTopics = make(map[string]*Topic, 3)
+		h.PrivateTopics[uid] = uTopics
+	}
+
+	topic, ok := uTopics[t]
+	if !ok {
+		topic = NewTopic(h)
+		uTopics[t] = topic
+	}
+
+	if topic.subscribe(req.client) {
+		metrics.RecordHubSubscription("private", t)
+		req.client.SubscribePrivate(t)
+	}
+}
+
+func (h *Hub) subscribePublic(t string, req *Request) {
+	topic, ok := h.PublicTopics[t]
+	if !ok {
+		topic = NewTopic(h)
+		h.PublicTopics[t] = topic
+	}
+
+	if topic.subscribe(req.client) {
+		metrics.RecordHubSubscription("public", t)
+		req.client.SubscribePublic(t)
+	}
+
+	if isIncrementObject(t) {
+		o, ok := h.IncrementalObjects[t]
+		if ok && o.Snapshot != "" {
+			req.client.Send(o.Snapshot)
+			for _, inc := range o.Increments {
+				req.client.Send(inc)
+			}
+		}
+	}
+}
+
+func (h *Hub) premittedRBAC(prefix string, auth Auth) bool {
+	rbac := h.RBAC[prefix]
+
+	for _, role := range rbac {
+		if role == auth.Role {
+			return true
+		}
+	}
+
+	return false
+}
+
+func splitPrefixedTopic(prefixed string) (string, string) {
+	spl := strings.Split(prefixed, ".")
+	prefix := spl[0]
+	t := strings.TrimPrefix(prefixed, prefix+".")
+
+	return prefix, t
+}
+
+func (h *Hub) subscribePrefixed(prefixed string, req *Request) {
+	prefix, t := splitPrefixedTopic(prefixed)
+
+	if !h.premittedRBAC(prefix, req.client.GetAuth()) {
+		req.client.Send(responseMust(nil, map[string]interface{}{
+			"message": "cannot subscribe to " + prefixed,
+		}))
+
+		return
+	}
+
+	topics, ok := h.PrefixedTopics[prefix]
+	if !ok {
+		topics := make(map[string]*Topic, 0)
+		h.PrefixedTopics[prefix] = topics
+	}
+
+	topic, ok := topics[t]
+	if !ok {
+		topic = NewTopic(h)
+		h.PrefixedTopics[prefix][t] = topic
+	}
+
+	if topic.subscribe(req.client) {
+		metrics.RecordHubSubscription("prefixed", prefixed)
+		req.client.SubscribePublic(prefixed)
+	}
+
+	if isIncrementObject(t) {
+		o, ok := h.IncrementalObjects[t]
+		if ok && o.Snapshot != "" {
+			req.client.Send(o.Snapshot)
+			for _, inc := range o.Increments {
+				req.client.Send(inc)
+			}
+		}
+	}
+}
+
 func (h *Hub) handleSubscribe(req *Request) {
 	h.mutex.Lock()
 	defer h.mutex.Unlock()
 
 	for _, t := range req.Streams {
-		if isPrivateStream(t) {
-			uid := req.client.GetUID()
-			if uid == "" {
-				log.Error().Msgf("Anonymous user tried to subscribe to private stream %s", t)
-				continue
-			}
-
-			uTopics, ok := h.PrivateTopics[uid]
-			if !ok {
-				uTopics = make(map[string]*Topic, 3)
-				h.PrivateTopics[uid] = uTopics
-			}
-
-			topic, ok := uTopics[t]
-			if !ok {
-				topic = NewTopic(h)
-				uTopics[t] = topic
-			}
-
-			if topic.subscribe(req.client) {
-				metrics.RecordHubSubscription("private", t)
-				req.client.SubscribePrivate(t)
-			}
-		} else {
-			topic, ok := h.PublicTopics[t]
-			if !ok {
-				topic = NewTopic(h)
-				h.PublicTopics[t] = topic
-			}
-
-			if topic.subscribe(req.client) {
-				metrics.RecordHubSubscription("public", t)
-				req.client.SubscribePublic(t)
-			}
-
-			if isIncrementObject(t) {
-				o, ok := h.IncrementalObjects[t]
-				if ok && o.Snapshot != "" {
-					req.client.Send(o.Snapshot)
-					for _, inc := range o.Increments {
-						req.client.Send(inc)
-					}
-				}
-			}
+		switch {
+		case isPrivateStream(t):
+			h.subscribePrivate(t, req)
+		case isPrefixedStream(t):
+			h.subscribePrefixed(t, req)
+		default:
+			h.subscribePublic(t, req)
 		}
 	}
 
@@ -362,50 +476,81 @@ func (h *Hub) handleSubscribe(req *Request) {
 	}))
 }
 
+func (h *Hub) unsubscribePrivate(t string, req *Request) {
+	uid := req.client.GetAuth().UID
+	if uid == "" {
+		return
+	}
+	uTopics, ok := h.PrivateTopics[uid]
+	if !ok {
+		return
+	}
+
+	topic, ok := uTopics[t]
+	if ok {
+		if topic.unsubscribe(req.client) {
+			metrics.RecordHubUnsubscription("private", t)
+			req.client.UnsubscribePrivate(t)
+		}
+
+		if topic.len() == 0 {
+			delete(uTopics, t)
+		}
+	}
+
+	uTopics, ok = h.PrivateTopics[uid]
+	if ok && len(uTopics) == 0 {
+		delete(h.PrivateTopics, uid)
+	}
+}
+
+func (h *Hub) unsubscribePrefixed(prefixed string, req *Request) {
+	scope, t := splitPrefixedTopic(prefixed)
+	topics, ok := h.PrefixedTopics[scope]
+	if !ok {
+		return
+	}
+
+	topic, ok := topics[t]
+	if ok {
+		if topic.unsubscribe(req.client) {
+			metrics.RecordHubUnsubscription("prefixed", t)
+			req.client.UnsubscribePublic(t)
+		}
+
+		if topic.len() == 0 {
+			delete(topics, t)
+			h.PrefixedTopics[scope] = topics
+		}
+	}
+}
+
+func (h *Hub) unsubscribePublic(t string, req *Request) {
+	topic, ok := h.PublicTopics[t]
+	if ok {
+		if topic.unsubscribe(req.client) {
+			metrics.RecordHubUnsubscription("public", t)
+			req.client.UnsubscribePublic(t)
+		}
+
+		if topic.len() == 0 {
+			delete(h.PublicTopics, t)
+		}
+	}
+}
+
 func (h *Hub) handleUnsubscribe(req *Request) {
 	h.mutex.Lock()
 	defer h.mutex.Unlock()
 
 	for _, t := range req.Streams {
-		if isPrivateStream(t) {
-			uid := req.client.GetUID()
-			if uid == "" {
-				continue
-			}
-			uTopics, ok := h.PrivateTopics[uid]
-			if !ok {
-				continue
-			}
-
-			topic, ok := uTopics[t]
-			if ok {
-				if topic.unsubscribe(req.client) {
-					metrics.RecordHubUnsubscription("private", t)
-					req.client.UnsubscribePrivate(t)
-				}
-
-				if topic.len() == 0 {
-					delete(uTopics, t)
-				}
-			}
-
-			uTopics, ok = h.PrivateTopics[uid]
-			if ok && len(uTopics) == 0 {
-				delete(h.PrivateTopics, uid)
-			}
-
-		} else {
-			topic, ok := h.PublicTopics[t]
-			if ok {
-				if topic.unsubscribe(req.client) {
-					metrics.RecordHubUnsubscription("public", t)
-					req.client.UnsubscribePublic(t)
-				}
-
-				if topic.len() == 0 {
-					delete(h.PublicTopics, t)
-				}
-			}
+		switch {
+		case isPrivateStream(t):
+			h.unsubscribePrivate(t, req)
+		case isPrefixedStream(t):
+			h.unsubscribePrefixed(t, req)
+		default:
+			h.unsubscribePublic(t, req)
 		}
 	}
 

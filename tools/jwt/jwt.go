@@ -16,6 +16,8 @@ var (
 )
 
 func main() {
+	flag.Parse()
+
 	ks, _ := auth.LoadOrGenerateKeys("config/rsa-key", "config/rsa-key.pub")
 	t, _ := auth.ForgeToken(*uid, *email, *role, *level, ks.PrivateKey, nil)
 	fmt.Print(t)
