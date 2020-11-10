@@ -121,13 +121,13 @@ Prefixed stream scopes are restricted based on user role (RBAC).
 For example, a specific prefix can be configured so only users with role admin or superadmin will receive messages of this stream.
 AMQP message with routing key `(prefix).market_id.event` (`admin.btcusd.sys`) are routed as prefixed messages.
 
-#### Prefixed messages setup
+#### Configure RBAC prefix streams
 
 To allow specific user roles to connect to prefixed stream, set `RANGO_RBAC_EXAMPLE` env, where ***EXAMPLE*** is the name of the prefix.
 Without this env, nobody will be allowed to subscribe.
 One specific environment variable should be set for each rbac stream.
 
-For example you can configure streams admin, sys and accounting as follow:
+For example you can configure the streams *admin*, *sys* and *accounting* as follow:
 
 ```
 RANGO_RBAC_ADMIN=admin,superadmin
