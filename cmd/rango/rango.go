@@ -52,8 +52,10 @@ func authHandler(h httpHanlder, key *rsa.PublicKey, mustAuth bool) httpHanlder {
 
 		if err == nil {
 			r.Header.Set("JwtUID", auth.UID)
+			r.Header.Set("JwtRole", auth.Role)
 		} else {
 			r.Header.Del("JwtUID")
+			r.Header.Del("JwtRole")
 		}
 		h(w, r)
 		return
@@ -123,6 +125,40 @@ func getServerAddress() string {
 	return fmt.Sprintf("%s:%s", host, port)
 }
 
+func getRBACConfig() map[string][]string {
+	envs := os.Environ()
+
+	rbacEnv := filterPrefixed("RANGO_RBAC_", envs)
+
+	return envToMatrix(rbacEnv, "RANGO_RBAC_")
+}
+
+func envToMatrix(env []string, trimPrefix string) map[string][]string {
+	matr := make(map[string][]string)
+
+	for _, rec := range env {
+		kv := strings.Split(rec, "=")
+		key := strings.ToLower(strings.TrimPrefix(kv[0], trimPrefix))
+		value := strings.Split(kv[1], ",")
+
+		matr[key] = value
+	}
+
+	return matr
+}
+
+func filterPrefixed(prefix string, arr []string) []string {
+	var res []string
+
+	for _, rec := range arr {
+		if strings.HasPrefix(rec, prefix) {
+			res = append(res, rec)
+		}
+	}
+
+	return res
+}
+
 func main() {
 	flag.Parse()
 
@@ -130,7 +166,8 @@ func main() {
 
 	metrics.Enable()
 
-	hub := routing.NewHub()
+	rbac := getRBACConfig()
+	hub := routing.NewHub(rbac)
 	pub, err := getPublicKey()
 	if err != nil {
 		log.Error().Msgf("Loading public key failed: %s", err.Error())

@@ -20,9 +20,9 @@ func (c *MockedClient) Send(m string) {
 func (c *MockedClient) Close() {
 }
 
-func (c *MockedClient) GetUID() string {
+func (c *MockedClient) GetAuth() Auth {
 	args := c.Called()
-	return args.String(0)
+	return args.Get(0).(Auth)
 }
 
 func (c *MockedClient) GetSubscriptions() []string {
@@ -47,7 +47,7 @@ func (c *MockedClient) UnsubscribePrivate(s string) {
 }
 
 func setup(c *MockedClient, streams []string) *Hub {
-	h := NewHub()
+	h := NewHub(nil)
 	h.handleSubscribe(&Request{
 		client: c,
 		Request: message.Request{
@@ -74,7 +74,7 @@ func TestAnonymous(t *testing.T) {
 			"eurusd.trades",
 		}
 
-		c.On("GetUID").Return("")
+		c.On("GetAuth").Return(Auth{})
 		c.On("GetSubscriptions").Return(streams).Once()
 		c.On("SubscribePublic", streams[0]).Return().Once()
 		c.On("Send", `{"success":{"message":"subscribed","streams":["`+streams[0]+`"]}}`).Return()
@@ -99,7 +99,7 @@ func TestAnonymous(t *testing.T) {
 			"eurusd.updates",
 		}
 
-		c.On("GetUID").Return("")
+		c.On("GetAuth").Return(Auth{})
 		c.On("GetSubscriptions").Return(streams).Once()
 		c.On("SubscribePublic", "eurusd.trades").Return()
 		c.On("SubscribePublic", "eurusd.updates").Return()
@@ -127,7 +127,7 @@ func TestAnonymous(t *testing.T) {
 	t.Run("subscribe to a private single stream", func(t *testing.T) {
 		c := MockedClient{}
 
-		c.On("GetUID").Return("")
+		c.On("GetAuth").Return(Auth{})
 		c.On("GetSubscriptions").Return([]string{})
 		c.On("SubscribePrivate", "trades").Return()
 		c.On("Send", `{"success":{"message":"subscribed","streams":[]}}`).Return()
@@ -144,7 +144,7 @@ func TestAuthenticated(t *testing.T) {
 	t.Run("subscribe to a private single stream", func(t *testing.T) {
 		c := &MockedClient{}
 
-		c.On("GetUID").Return("UIDABC00001")
+		c.On("GetAuth").Return(Auth{UID: "UIDABC00001"})
 		c.On("GetSubscriptions").Return([]string{"trades"}).Once()
 		c.On("SubscribePrivate", "trades").Return()
 		c.On("Send", `{"success":{"message":"subscribed","streams":["trades"]}}`).Return()
@@ -168,7 +168,7 @@ func TestAuthenticated(t *testing.T) {
 		c := &MockedClient{}
 
 		c.On("GetSubscriptions").Return([]string{"trades", "orders"}).Once()
-		c.On("GetUID").Return("UIDABC00001")
+		c.On("GetAuth").Return(Auth{UID: "UIDABC00001"})
 		c.On("SubscribePrivate", "trades").Return()
 		c.On("SubscribePrivate", "orders").Return()
 		c.On("Send", `{"success":{"message":"subscribed","streams":["trades","orders"]}}`).Return()
@@ -196,7 +196,7 @@ func TestAuthenticated(t *testing.T) {
 		c := &MockedClient{}
 
 		c.On("GetSubscriptions").Return([]string{"trades", "orders", "eurusd.updates"}).Once()
-		c.On("GetUID").Return("UIDABC00001")
+		c.On("GetAuth").Return(Auth{UID: "UIDABC00001"})
 		c.On("SubscribePrivate", "trades").Return()
 		c.On("SubscribePrivate", "orders").Return()
 		c.On("SubscribePublic", "eurusd.updates").Return()
@@ -240,7 +240,7 @@ func TestGetTopic(t *testing.T) {
 }
 
 func TestIncrementalObjectStorage(t *testing.T) {
-	h := NewHub()
+	h := NewHub(nil)
 
 	// Increments before the first snapshot must be ignored
 	h.routeMessage(&Event{

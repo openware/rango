@@ -8,16 +8,16 @@ import (
 )
 
 func TestClient(t *testing.T) {
-	hub := NewHub()
+	hub := NewHub(nil)
 	client := &Client{
 		hub:     hub,
 		send:    make(chan []byte, 256),
-		UID:     "UIDABC001",
+		Auth:    Auth{UID: "UIDABC001", Role: "admin"},
 		pubSub:  []string{},
 		privSub: []string{},
 	}
 
-	assert.Equal(t, "UIDABC001", client.GetUID())
+	assert.Equal(t, "UIDABC001", client.GetAuth().UID)
 	assert.Equal(t, []string{}, client.GetSubscriptions())
 
 	client.SubscribePublic("a.x")

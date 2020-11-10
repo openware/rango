@@ -101,6 +101,42 @@ Rango exposes metrics in Prometheus format on the port 4242.
 ./rango
 ```
 
+## Scopes
+
+In rango there are three stream scopes: public, private and prefixed.
+
+### Public
+
+Anyone can register to Public streams, even anonymous users, like orderbook updates, klines and tickers.
+AMQP message with routing key `public.market_id.event` (`public.btcusd.trade`) are routed as public messages.
+
+### Private
+
+With Private stream the user will receive only the message addressed to him, for example its own order updates or trades.
+AMQP messages with routing key `private.UID.event` (`private.IDABC0000001.trade`) are routed as private messages.
+
+### Prefixed
+
+Prefixed stream scopes are restricted based on user role (RBAC).
+For example, a specific prefix can be configured so only users with role admin or superadmin will receive messages of this stream.
+AMQP message with routing key `(prefix).market_id.event` (`admin.btcusd.sys`) are routed as prefixed messages.
+
+#### Configure RBAC prefix streams
+
+To allow specific user roles to connect to prefixed stream, set `RANGO_RBAC_EXAMPLE` env, where ***EXAMPLE*** is the name of the prefix.
+Without this env, nobody will be allowed to subscribe.
+One specific environment variable should be set for each rbac stream.
+
+For example you can configure the streams *admin*, *sys* and *accounting* as follow:
+
+```
+export RANGO_RBAC_ADMIN=admin,superadmin
+export RANGO_RBAC_SYS=admin,superadmin,operator
+export RANGO_RBAC_ACCOUNTING=accountant,operator
+```
+
+User with role 'accountant' will received messages with route `accounting.asset.new` for example.
+
 ## Connect to public channel
 
 ```bash
@@ -127,4 +163,6 @@ wscat --connect localhost:8080/private --header "Authorization: Bearer ${JWT}"
 {"event":"unsubscribe","streams":["eurusd.trades"]}
 ```
 
+```
 {"event":"subscribe","streams":["btcusd.trades","ethusd.ob-inc","ethusd.trades","xrpusd.ob-inc","xrpusd.trades","usdtusd.ob-inc","usdtusd.trades"]}
+```

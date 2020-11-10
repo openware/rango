@@ -56,7 +56,7 @@ func (t *Topic) broadcast(message *Event) {
 	}
 }
 
-func (t *Topic) broadcastRaw(topic, msgBody string) {
+func (t *Topic) broadcastRaw(msgBody string) {
 	for client := range t.clients {
 		client.Send(msgBody)
 	}
