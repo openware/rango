@@ -130,9 +130,9 @@ One specific environment variable should be set for each rbac stream.
 For example you can configure the streams *admin*, *sys* and *accounting* as follow:
 
 ```
-RANGO_RBAC_ADMIN=admin,superadmin
-RANGO_RBAC_SYS=admin,superadmin,operator
-RANGO_RBAC_ACCOUNTING=accountant,operator
+export RANGO_RBAC_ADMIN=admin,superadmin
+export RANGO_RBAC_SYS=admin,superadmin,operator
+export RANGO_RBAC_ACCOUNTING=accountant,operator
 ```
 
 User with role 'accountant' will received messages with route `accounting.asset.new` for example.
