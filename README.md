@@ -103,29 +103,31 @@ Rango exposes metrics in Prometheus format on the port 4242.
 
 ## Scopes
 
-In rango there are three message scopes: private, public and prefixed.
-
-### Private
-
-Private scope is for messages, addressed to specific user, like user order updates or user trades.
-AMQP messages with routing key `private.UID.event` (`private.IDABC0000001.trade`) are routed as private messages.
+In rango there are three stream scopes: public, private and prefixed.
 
 ### Public
 
-Public messages are messages addressed to everyone who is connected, like orderbook updates, klines and tickers.
+Anyone can register to Public streams, even anonymous users, like orderbook updates, klines and tickers.
 AMQP message with routing key `public.market_id.event` (`public.btcusd.trade`) are routed as public messages.
+
+### Private
+
+With Private stream the user will receive only the message addressed to him, for example its own order updates or trades.
+AMQP messages with routing key `private.UID.event` (`private.IDABC0000001.trade`) are routed as private messages.
 
 ### Prefixed
 
-Prefixed scope is a scope for messages, which are addressed to user, authorized by rango RBAC.
-For example, notifications for admin, only users with roles admin amd superadmin can subscribe to these topics.
+Prefixed stream scopes are restricted based on user role (RBAC).
+For example, a specific prefix can be configured so only users with role admin or superadmin will receive messages of this stream.
 AMQP message with routing key `(prefix).market_id.event` (`admin.btcusd.sys`) are routed as prefixed messages.
 
 #### Prefixed messages setup
 
-To allow specific user roles to connect to prefixed messages, set `RANGO_RBAC_PREFIX` env.
-Without this env, nobody will have ability to subscribe.
-This env should be set per every env, planned to be used:
+To allow specific user roles to connect to prefixed stream, set `RANGO_RBAC_EXAMPLE` env, where ***EXAMPLE*** is the name of the prefix.
+Without this env, nobody will be allowed to subscribe.
+One specific environment variable should be set for each rbac stream.
+
+For example you can configure streams admin, sys and accounting as follow:
 
 ```
 RANGO_RBAC_ADMIN=admin,superadmin
@@ -133,7 +135,7 @@ RANGO_RBAC_SYS=admin,superadmin,operator
 RANGO_RBAC_ACCOUNTING=accountant,operator
 ```
 
-This config allows, for example to subscribe for user with role 'accountant' to `accounting.asset.new` messages.
+User with role 'accountant' will received messages with route `accounting.asset.new` for example.
 
 ## Connect to public channel
 
