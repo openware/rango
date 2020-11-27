@@ -9,12 +9,15 @@ import (
 	"github.com/dgrijalva/jwt-go"
 )
 
-// Auth struct represnets parsed jwt information.
+// Auth struct represents parsed jwt information.
 type Auth struct {
-	UID      string      `json:"uid"`
-	Role     string      `json:"role"`
-	Level    json.Number `json:"level"`
-	Audience []string    `json:"aud,omitempty"`
+	UID        string      `json:"uid"`
+	State      string      `json:"state"`
+	Email      string      `json:"email"`
+	Role       string      `json:"role"`
+	ReferralID string      `json:"referral_id"`
+	Level      json.Number `json:"level"`
+	Audience   []string    `json:"aud,omitempty"`
 
 	jwt.StandardClaims
 }
@@ -46,6 +49,7 @@ func appendClaims(defaultClaims, customClaims jwt.MapClaims) jwt.MapClaims {
 	return defaultClaims
 }
 
+// ForgeToken creates a valid JWT signed by the given private key
 func ForgeToken(uid, email, role string, level int, key *rsa.PrivateKey, customClaims jwt.MapClaims) (string, error) {
 	claims := appendClaims(jwt.MapClaims{
 		"iat":         time.Now().Unix(),
