@@ -12,7 +12,7 @@ steps:
       - go test ./... --cover --count=100
 
   - name: "Bump & Tag"
-    image: quay.io/openware/sdk-citools:2.4.5
+    image: quay.io/openware/sdk-citools:2.6.7
     environment:
       BRANCH_NAME: ${DRONE_BRANCH}
       REPO_NAME: openware/rango
@@ -40,7 +40,7 @@ steps:
         - "*-stable"
 
   - name: "Notify"
-    image: quay.io/openware/sdk-citools:2.4.5
+    image: quay.io/openware/sdk-citools:2.6.7
     environment:
       BOT_USERNAME: kite-bot
       BOT_NAME: Kite Bot
