@@ -228,9 +228,7 @@ func (h *Hub) routeMessage(msg *Event) {
 
 		h.handleIncrementalMessage(topic, ok, msg)
 
-		if ok {
-			topic.broadcast(msg)
-		} else {
+		if !ok {
 			if isTrace() {
 				log.Trace().Msgf("No public registration to %s", msg.Topic)
 				log.Trace().Msgf("Public topics: %v", h.PublicTopics)
