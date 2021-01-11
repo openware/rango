@@ -193,7 +193,7 @@ func (h *Hub) handleIncrement(msg *Event) (string, error) {
 
 }
 
-func (h *Hub) handleIncrementalMessage(topic *Topic, ok bool, msg *Event) {
+func (h *Hub) handleMessage(topic *Topic, ok bool, msg *Event) {
 	switch {
 	case isIncrementObject(msg.Type):
 		rm, err := h.handleIncrement(msg)
@@ -204,14 +204,18 @@ func (h *Hub) handleIncrementalMessage(topic *Topic, ok bool, msg *Event) {
 		if ok {
 			topic.broadcastRaw(rm)
 		}
-		return
+
 	case isSnapshotObject(msg.Type):
 		_, err := h.handleSnapshot(msg)
 		if err != nil {
 			log.Error().Msgf("handleSnapshot failed: %s", err.Error())
 			return
 		}
-		return
+
+	default:
+		if ok {
+			topic.broadcast(msg)
+		}
 	}
 }
 
@@ -225,8 +229,7 @@ func (h *Hub) routeMessage(msg *Event) {
 	switch msg.Scope {
 	case "public", "global":
 		topic, ok := h.PublicTopics[msg.Topic]
-
-		h.handleIncrementalMessage(topic, ok, msg)
+		h.handleMessage(topic, ok, msg)
 
 		if !ok {
 			if isTrace() {

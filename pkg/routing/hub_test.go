@@ -239,6 +239,29 @@ func TestGetTopic(t *testing.T) {
 	assert.Equal(t, "abc.count-inc", getTopic("public", "abc", "count-snap"))
 }
 
+func TestHandleMessage(t *testing.T) {
+	h := NewHub(nil)
+	c := &MockedClient{}
+	c.On("SubscribePublic", "abc.ticker").Return()
+	c.On("Send", "{\"abc.ticker\":{\"some\":\"data\"}}").Return()
+
+	h.subscribePublic("abc.ticker", &Request{
+		client: c,
+	})
+
+	h.routeMessage(&Event{
+		Scope:  "public",
+		Stream: "abc",
+		Type:   "ticker",
+		Topic:  "abc.ticker",
+		Body: map[string]interface{}{
+			"some": "data",
+		},
+	})
+
+	c.AssertExpectations(t)
+}
+
 func TestIncrementalObjectStorage(t *testing.T) {
 	h := NewHub(nil)
 
