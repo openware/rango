@@ -1,5 +1,11 @@
 FROM golang:1.13-alpine AS builder
 
+RUN apk add --no-cache curl
+
+# Install Kaigara
+RUN curl -Lo /usr/bin/kaigara https://github.com/openware/kaigara/releases/download/${KAIGARA_VERSION}/kaigara \
+  && chmod +x /usr/bin/kaigara
+
 WORKDIR /build
 ENV CGO_ENABLED=1 \
   GOOS=linux \
