@@ -24,6 +24,7 @@ FROM alpine:3.9
 RUN apk add ca-certificates
 WORKDIR app
 COPY --from=builder /build/rango ./
+COPY --from=builder /usr/bin/kaigara /usr/bin/kaigara
 RUN mkdir -p /app/config
 
 CMD ["./rango"]
