@@ -34,6 +34,8 @@ type httpHanlder func(w http.ResponseWriter, r *http.Request)
 
 func token(r *http.Request) string {
 	authHeader := r.Header.Get("Authorization")
+	fmt.Println("Print auth header")
+	fmt.Println(authHeader)
 	if !strings.HasPrefix(string(authHeader), prefix) {
 		return ""
 	}
@@ -45,10 +47,14 @@ func authHandler(h httpHanlder, key *rsa.PublicKey, mustAuth bool) httpHanlder {
 	return func(w http.ResponseWriter, r *http.Request) {
 		auth, err := auth.ParseAndValidate(token(r), key)
 
+		fmt.Println("Print auth")
+		fmt.Println(auth)
 		if err != nil && mustAuth {
 			w.WriteHeader(http.StatusUnauthorized)
 			return
 		}
+		fmt.Println("Print error")
+		fmt.Println(err)
 
 		if err == nil {
 			r.Header.Set("JwtUID", auth.UID)

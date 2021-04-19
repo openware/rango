@@ -38,6 +38,7 @@ steps:
       branch:
         - master
         - "*-stable"
+        - "build/*"
 
   - name: "Notify"
     image: quay.io/openware/sdk-citools:2.6.7
