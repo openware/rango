@@ -15,7 +15,7 @@ type Auth struct {
 	State      string      `json:"state"`
 	Email      string      `json:"email"`
 	Role       string      `json:"role"`
-	ReferralID string      `json:"referral_id"`
+	ReferralID json.Number `json:"referral_id"`
 	Level      json.Number `json:"level"`
 	Audience   []string    `json:"aud,omitempty"`
 
