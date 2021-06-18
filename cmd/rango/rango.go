@@ -176,23 +176,31 @@ func main() {
 	}
 
 	rand.Seed(time.Now().UnixNano())
-	publicQName := fmt.Sprintf("rango.instance.%d", rand.Int())
+	globalQName := fmt.Sprintf("rango.instance.%d", rand.Int())
 	privateQName := fmt.Sprintf("rango.instance.private-%d", rand.Int())
-	mq, err := amqp.NewAMQPSession(getAMQPConnectionURL())
+
+	// Establish AMQP session for all non private events
+	globalMq, err := amqp.NewAMQPSession(getAMQPConnectionURL())
 	if err != nil {
 		log.Fatal().Msgf("creating new AMQP session failed: %s", err.Error())
 		return
 	}
-	err = mq.Stream(*exName, publicQName, hub.ReceiveMsg)
-	defer mq.Close(publicQName)
+	err = globalMq.Stream(*exName, globalQName, "#", hub.SkipPrivateMsg)
+	defer globalMq.Close(globalQName)
 
 	if err != nil {
 		log.Fatal().Msgf("AMQP init failed: %s", err.Error())
 		return
 	}
 
-	err = mq.Stream(*exName, privateQName, hub.ReceiveMsg)
-	defer mq.Close(privateQName)
+	// Establish AMQP session for private events
+	privateMq, err := amqp.NewAMQPSession(getAMQPConnectionURL())
+	if err != nil {
+		log.Fatal().Msgf("creating new AMQP session failed: %s", err.Error())
+		return
+	}
+	err = privateMq.Stream(*exName, privateQName, "private.#", hub.ReceiveMsg)
+	defer privateMq.Close(privateQName)
 
 	if err != nil {
 		log.Fatal().Msgf("AMQP init failed: %s", err.Error())
