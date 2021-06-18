@@ -248,7 +248,7 @@ func (session *AMQPSession) UnsafePush(ex, rt string, data []byte) error {
 // It is required to call delivery.Ack when it has been
 // successfully processed, or delivery.Nack when it fails.
 // Ignoring this will cause data to build up on the server.
-func (session *AMQPSession) Stream(exName, qName string, consumer func(amqp.Delivery)) error {
+func (session *AMQPSession) Stream(exName, qName, rKey string, consumer func(amqp.Delivery)) error {
 	session.mutex.Lock()
 	reinit := make(chan bool, 1)
 	session.streamsReInit = append(session.streamsReInit, reinit)
@@ -271,7 +271,7 @@ func (session *AMQPSession) Stream(exName, qName string, consumer func(amqp.Deli
 			}
 
 			session.channel.ExchangeDeclare(exName, "topic", false, false, false, false, nil)
-			session.channel.QueueBind(qName, "#", exName, false, nil)
+			session.channel.QueueBind(qName, rKey, exName, false, nil)
 
 			ch, err := session.channel.Consume(
 				qName,

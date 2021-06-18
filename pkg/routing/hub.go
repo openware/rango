@@ -154,6 +154,14 @@ func (h *Hub) ReceiveMsg(delivery amqp.Delivery) {
 	}
 }
 
+func (h *Hub) SkipPrivateMsg(delivery amqp.Delivery) {
+	if strings.HasPrefix(delivery.RoutingKey, "private") {
+		return
+	}
+
+	h.ReceiveMsg(delivery)
+}
+
 func (h *Hub) handleSnapshot(msg *Event) (string, error) {
 	topic := msg.Stream + "." + msg.Type
 	body, err := json.Marshal(map[string]interface{}{
