@@ -176,14 +176,23 @@ func main() {
 	}
 
 	rand.Seed(time.Now().UnixNano())
-	qName := fmt.Sprintf("rango.instance.%d", rand.Int())
+	publicQName := fmt.Sprintf("rango.instance.%d", rand.Int())
+	privateQName := fmt.Sprintf("rango.instance.private-%d", rand.Int())
 	mq, err := amqp.NewAMQPSession(getAMQPConnectionURL())
 	if err != nil {
 		log.Fatal().Msgf("creating new AMQP session failed: %s", err.Error())
 		return
 	}
-	err = mq.Stream(*exName, qName, hub.ReceiveMsg)
-	defer mq.Close(qName)
+	err = mq.Stream(*exName, publicQName, hub.ReceiveMsg)
+	defer mq.Close(publicQName)
+
+	if err != nil {
+		log.Fatal().Msgf("AMQP init failed: %s", err.Error())
+		return
+	}
+
+	err = mq.Stream(*exName, privateQName, hub.ReceiveMsg)
+	defer mq.Close(privateQName)
 
 	if err != nil {
 		log.Fatal().Msgf("AMQP init failed: %s", err.Error())

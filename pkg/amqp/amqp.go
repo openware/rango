@@ -2,6 +2,7 @@ package amqp
 
 import (
 	"errors"
+	"regexp"
 	"sync"
 	"time"
 
@@ -271,7 +272,11 @@ func (session *AMQPSession) Stream(exName, qName string, consumer func(amqp.Deli
 			}
 
 			session.channel.ExchangeDeclare(exName, "topic", false, false, false, false, nil)
-			session.channel.QueueBind(qName, "#", exName, false, nil)
+			if privateTopicOnly(qName) {
+				session.channel.QueueBind(qName, "private.#", exName, false, nil)
+			} else {
+				session.channel.QueueBind(qName, "#", exName, false, nil)
+			}
 
 			ch, err := session.channel.Consume(
 				qName,
@@ -320,4 +325,9 @@ func (session *AMQPSession) Close(qName string) error {
 		return err
 	}
 	return nil
+}
+
+func privateTopicOnly(qName string) bool {
+	privateNameRegexp := regexp.MustCompile(`rango.instance.private-\d+`)
+	return privateNameRegexp.MatchString(qName)
 }
