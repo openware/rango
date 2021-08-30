@@ -167,6 +167,19 @@ wscat --connect localhost:8080/private --header "Authorization: Bearer ${JWT}"
 {"event":"subscribe","streams":["btcusd.trades","ethusd.ob-inc","ethusd.trades","xrpusd.ob-inc","xrpusd.trades","usdtusd.ob-inc","usdtusd.trades"]}
 ```
 
+
+## Run in development
+
+```
+API_CORS_ORIGINS=.bitzlato.com,localhost:3000,* while :; do go run ./cmd/rango; sleep 1; done
+```
+
+## Deploy with capistrano
+
+1. Prepare server with ansible
+2. cap production systemd:rango:setup
+3. cap production deploy
+
 ## License
 Barong JWT is released under the terms of the [Apache License 2.0](LICENSE.md).
 

@@ -1,0 +1,67 @@
+GIT
+  remote: https://github.com/brandymint/capistrano-tasks
+  revision: ed94c975c36a7ba41a173bddf6dba46034ca41e2
+  specs:
+    capistrano-tasks (0.0.1)
+
+GIT
+  remote: https://github.com/groovenauts/capistrano-systemd-multiservice
+  revision: 955b99cc7588521ddc26ccd523ebba306e16fa0a
+  specs:
+    capistrano-systemd-multiservice (0.1.0.beta12)
+      capistrano (>= 3.7.0, < 3.17.0)
+
+GEM
+  remote: https://rubygems.org/
+  specs:
+    airbrussh (1.4.0)
+      sshkit (>= 1.6.1, != 1.7.0)
+    bugsnag-capistrano (2.1.0)
+    capistrano (3.16.0)
+      airbrussh (>= 1.0.0)
+      i18n
+      rake (>= 10.0.0)
+      sshkit (>= 1.9.0)
+    capistrano-bundler (2.0.1)
+      capistrano (~> 3.1)
+    capistrano-dotenv (0.0.5)
+      capistrano (>= 3.5.0, < 4.0.0)
+    capistrano-dotenv-tasks (0.1.5)
+      capistrano (~> 3.0)
+    capistrano-goenv (0.0.2)
+      capistrano (~> 3.1)
+    capistrano-shell (0.2.0)
+      capistrano (~> 3.1)
+    concurrent-ruby (1.1.9)
+    dotenv (2.7.6)
+    i18n (1.8.10)
+      concurrent-ruby (~> 1.0)
+    net-scp (3.0.0)
+      net-ssh (>= 2.6.5, < 7.0.0)
+    net-ssh (6.1.0)
+    rake (13.0.6)
+    slackistrano (4.0.1)
+      capistrano (>= 3.8.1)
+    sshkit (1.21.2)
+      net-scp (>= 1.1.2)
+      net-ssh (>= 2.8.0)
+
+PLATFORMS
+  ruby
+  x86_64-linux
+
+DEPENDENCIES
+  bugsnag-capistrano
+  capistrano
+  capistrano-bundler
+  capistrano-dotenv
+  capistrano-dotenv-tasks
+  capistrano-goenv
+  capistrano-shell
+  capistrano-systemd-multiservice!
+  capistrano-tasks!
+  dotenv
+  slackistrano
+
+BUNDLED WITH
+   2.2.24
