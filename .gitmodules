@@ -1,0 +1,3 @@
+[submodule "vendor/capistrano-goenv"]
+	path = vendor/capistrano-goenv
+	url = git@github.com:dapi/capistrano-goenv.git
