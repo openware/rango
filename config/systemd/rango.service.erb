@@ -7,17 +7,9 @@ WatchdogSec=10
 Type=simple
 Environment=PWD=<%= current_path %>
 EnvironmentFile=<%= current_path %>/.env
-# Helpful for debugging socket activation, etc.
 WorkingDirectory=<%= current_path %>
 ExecStart=<%= current_path %>/rango
 
-# ExecReload=/home/<%= fetch(:user) %>/.rbenv/bin/rbenv exec bundle exec pumactl -S <%= shared_path %>/tmp/pids/puma.state -F <%= shared_path %>/puma.rb restart
-# ExecStop=/home/<%= fetch(:user) %>/.rbenv/bin/rbenv exec bundle exec pumactl -S <%= shared_path %>/tmp/pids/puma.state stop
-
-# Если запускается от пользователя, то нужно убрать
-# https://stackoverflow.com/questions/48065475/systemctl-failed-at-step-group-spawning
-# User = <%= fetch(:user) %>
-# Group = <%= fetch(:user) %>
 KillMode=mixed
 Restart=always
 RestartSec=1
