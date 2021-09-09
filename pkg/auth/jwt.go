@@ -6,7 +6,7 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/dgrijalva/jwt-go"
+	"github.com/golang-jwt/jwt"
 )
 
 // Auth struct represents parsed jwt information.
