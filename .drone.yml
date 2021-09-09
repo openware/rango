@@ -4,7 +4,7 @@ name: default
 
 steps:
   - name: Go test
-    image: golang:1.13
+    image: golang:1.16
     environment:
       GO111MODULE: on
     commands:
