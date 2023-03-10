@@ -2,7 +2,7 @@ FROM golang:1.16-alpine AS builder
 
 RUN apk add --no-cache curl
 
-ARG KAIGARA_VERSION=v1.0.28
+ARG KAIGARA_VERSION=v1.0.29
 # Install Kaigara
 RUN curl -Lo /usr/bin/kaigara https://github.com/openware/kaigara/releases/download/${KAIGARA_VERSION}/kaigara \
   && chmod +x /usr/bin/kaigara
