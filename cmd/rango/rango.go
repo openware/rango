@@ -1,7 +1,7 @@
 package main
 
 import (
-	"crypto/rsa"
+	"crypto/ed25519"
 	"flag"
 	"fmt"
 	"net/http"
@@ -15,8 +15,8 @@ import (
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 
+	"github.com/openware/pkg/jwt"
 	"github.com/openware/rango/pkg/amqp"
-	"github.com/openware/rango/pkg/auth"
 	"github.com/openware/rango/pkg/metrics"
 	"github.com/openware/rango/pkg/routing"
 )
@@ -24,7 +24,7 @@ import (
 var (
 	wsAddr   = flag.String("ws-addr", "", "http service address")
 	amqpAddr = flag.String("amqp-addr", "", "AMQP server address")
-	pubKey   = flag.String("pubKey", "config/rsa-key.pub", "Path to public key")
+	pubKey   = flag.String("pubKey", "config/ed25519-key.pub", "Path to public key")
 	exName   = flag.String("exchange", "peatio.events.ranger", "Exchange name of upstream messages")
 )
 
@@ -41,9 +41,9 @@ func token(r *http.Request) string {
 	return authHeader[len(prefix):]
 }
 
-func authHandler(h httpHanlder, key *rsa.PublicKey, mustAuth bool) httpHanlder {
+func authHandler(h httpHanlder, key ed25519.PublicKey, mustAuth bool) httpHanlder {
 	return func(w http.ResponseWriter, r *http.Request) {
-		auth, err := auth.ParseAndValidate(token(r), key)
+		auth, err := jwt.ParseAndValidateEdDSA(token(r), key)
 
 		if err != nil && mustAuth {
 			w.WriteHeader(http.StatusUnauthorized)
@@ -77,8 +77,8 @@ func setupLogger() {
 	zerolog.SetGlobalLevel(zerolog.DebugLevel)
 }
 
-func getPublicKey() (pub *rsa.PublicKey, err error) {
-	ks := auth.KeyStore{}
+func getPublicKey() (pub ed25519.PublicKey, err error) {
+	ks := jwt.KeyStoreEdDSA{}
 	encPem := os.Getenv("JWT_PUBLIC_KEY")
 
 	if encPem != "" {
