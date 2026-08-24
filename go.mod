@@ -3,7 +3,7 @@ module github.com/openware/rango
 go 1.18
 
 require (
-	github.com/gorilla/websocket v1.4.2
+	github.com/gorilla/websocket v1.5.3
 	github.com/openware/pkg v0.1.6
 	github.com/prometheus/client_golang v1.11.1
 	github.com/rs/zerolog v1.18.0
